@@ -46,8 +46,10 @@ LOG_FOLDER = "log_files"
 Path(LOG_FOLDER).mkdir(parents=True, exist_ok=True)
 LOG_FILE_NAME = f"{LOG_FOLDER}/log_{time.strftime('%Y%m%d%H%M%S', time.localtime())}_{random.randint(0, 10000)}.log"
 
+# logging.basicConfig(level=logging.DEBUG)
+
 logger = logging.getLogger("logger")
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.DEBUG)
@@ -381,14 +383,17 @@ def test(
             trajectory.append(state_info)
 
             meta_data = {"action_history": ["None"]}
+
             while True:
                 early_stop_flag, stop_info = early_stop(
                     trajectory, max_steps, early_stop_thresholds
                 )
 
                 if early_stop_flag:
+                    logger.debug(f"Early stop: {stop_info}")
                     action = create_stop_action(f"Early stop: {stop_info}")
                 else:
+                    logger.debug("Generating next action...")
                     try:
                         action = agent.next_action(
                             trajectory,
@@ -398,7 +403,10 @@ def test(
                         )
                     except ValueError as e:
                         # get the error message
+                        logger.error(f"ValueError in agent.next_action: {e}")
                         action = create_stop_action(f"ERROR: {str(e)}")
+
+                    logger.debug("Action generated.")
 
                 trajectory.append(action)
 
@@ -409,6 +417,7 @@ def test(
                     prompt_constructor=agent.prompt_constructor
                     if isinstance(agent, PromptAgent)
                     else None,
+                    current_url=state_info["info"]["page"].url,
                 )
                 render_helper.render(
                     action, state_info, meta_data, args.render_screenshot
@@ -449,9 +458,9 @@ def test(
                     Path(args.result_dir) / "traces" / f"{task_id}.zip"
                 )
         except openai.OpenAIError as e:
-            logger.info(f"[OpenAI Error] {repr(e)}")
+            logger.error(f"[OpenAI Error] {repr(e)}")
         except Exception as e:
-            logger.info(f"[Unhandled Error] {repr(e)}]")
+            logger.error(f"[Unhandled Error] {repr(e)}]")
             import traceback
 
             # write to error file

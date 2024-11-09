@@ -1,6 +1,7 @@
 import base64
 import io
 import json
+import logging
 import re
 from pathlib import Path
 from typing import Any
@@ -81,9 +82,11 @@ def get_action_description(
     observation_metadata: dict[str, ObservationMetadata],
     action_set_tag: str,
     prompt_constructor: PromptConstructor | None,
+    current_url: str = "",
 ) -> str:
     """Generate the text version of the predicted actions to store in action history for prompt use.
     May contain hint information to recover from the failures"""
+    logger = logging.getLogger("logger")
 
     match action_set_tag:
         case "id_accessibility_tree":
@@ -103,7 +106,17 @@ def get_action_description(
                         action, action_set_tag, node_content
                     )
                 else:
-                    action_str = f"Attempt to perfom \"{action_name}\" on element \"[{action['element_id']}]\" but no matching element found. Please check the observation more carefully."
+                    action_str = f'Attempt to perfom "{action_name}" on element "[{action["element_id"]}]" but no matching element found. Please check the observation more carefully.'
+            if action["action_type"] == ActionTypes.POST_COMMENT:
+                url_match = re.search(r"/f/[^/]+/(\d+)", current_url)
+                if not url_match:
+                    logger.warning(f"No match found on: {current_url}")
+                    action_str = (
+                        "Attempt to post comment on a page without comment box."
+                    )
+                else:
+                    action_str = action2str(action, action_set_tag, "")
+
             else:
                 if (
                     action["action_type"] == ActionTypes.NONE

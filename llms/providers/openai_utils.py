@@ -12,8 +12,8 @@ import aiolimiter
 import openai
 from openai import AsyncOpenAI, OpenAI
 
-client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
+client = OpenAI(api_key=os.environ["OPENAI_API_KEY"], base_url=os.environ.get("OPENAI_BASE_URL"))
+aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"], base_url=os.environ.get("OPENAI_BASE_URL"))
 from tqdm.asyncio import tqdm_asyncio
 
 
@@ -44,13 +44,23 @@ def retry_with_exponential_backoff(  # type: ignore
 
             # Retry on specified errors
             except errors as e:
+                # Log the full error details
+                logger = logging.getLogger("logger")
+                logger.error(
+                    f"OpenAI API error (attempt {num_retries + 1}): {type(e).__name__}"
+                )
+                logger.error(f"Error message: {e}")
+                if hasattr(e, "response") and e.response is not None:
+                    logger.error(f"Response status: {e.response.status_code}")
+                    logger.error(f"Response body: {e.response.text}")
+
                 # Increment retries
                 num_retries += 1
 
                 # Check if max retries has been reached
                 if num_retries > max_retries:
                     raise Exception(
-                        f"Maximum number of retries ({max_retries}) exceeded."
+                        f"Maximum number of retries ({max_retries}) exceeded. Last error: {e}"
                     )
 
                 # Increment the delay
@@ -61,6 +71,8 @@ def retry_with_exponential_backoff(  # type: ignore
 
             # Raise exceptions for any errors not specified
             except Exception as e:
+                logger = logging.getLogger("logger")
+                logger.error(f"Unexpected error in OpenAI API call: {e}")
                 raise e
 
     return wrapper
@@ -84,13 +96,15 @@ async def _throttled_openai_completion_acreate(
                     max_tokens=max_tokens,
                     top_p=top_p,
                 )
-            except openai.RateLimitError:
-                logging.warning(
-                    "OpenAI API rate limit exceeded. Sleeping for 10 seconds."
+            except openai.RateLimitError as e:
+                logger = logging.getLogger("logger")
+                logger.error(
+                    f"OpenAI API rate limit exceeded. Sleeping for 10 seconds: {e}"
                 )
                 await asyncio.sleep(10)
             except openai.APIError as e:
-                logging.warning(f"OpenAI API error: {e}")
+                logger = logging.getLogger("logger")
+                logger.error(f"OpenAI API error: {e}")
                 break
         return {"choices": [{"message": {"content": ""}}]}
 
@@ -157,7 +171,7 @@ def generate_from_openai_completion(
         prompt=prompt,
         engine=engine,
         temperature=temperature,
-        max_tokens=max_tokens,
+        # max_tokens=max_tokens,
         top_p=top_p,
         stop=[stop_token],
     )
@@ -180,19 +194,22 @@ async def _throttled_openai_chat_completion_acreate(
                     model=model,
                     messages=messages,
                     temperature=temperature,
-                    max_tokens=max_tokens,
+                    # max_tokens=max_tokens,
                     top_p=top_p,
                 )
-            except openai.RateLimitError:
-                logging.warning(
-                    "OpenAI API rate limit exceeded. Sleeping for 10 seconds."
+            except openai.RateLimitError as e:
+                logger = logging.getLogger("logger")
+                logger.error(
+                    f"OpenAI API rate limit exceeded. Sleeping for 10 seconds: {e}"
                 )
                 await asyncio.sleep(10)
-            except asyncio.exceptions.TimeoutError:
-                logging.warning("OpenAI API timeout. Sleeping for 10 seconds.")
+            except asyncio.exceptions.TimeoutError as e:
+                logger = logging.getLogger("logger")
+                logger.error(f"OpenAI API timeout. Sleeping for 10 seconds: {e}")
                 await asyncio.sleep(10)
             except openai.APIError as e:
-                logging.warning(f"OpenAI API error: {e}")
+                logger = logging.getLogger("logger")
+                logger.error(f"OpenAI API error: {e}")
                 break
         return {"choices": [{"message": {"content": ""}}]}
 
@@ -250,17 +267,36 @@ def generate_from_openai_chat_completion(
     context_length: int,
     stop_token: str | None = None,
 ) -> str:
+    logger = logging.getLogger("logger")
+    logger.debug("Generating from OpenAI chat completion")
+
     if "OPENAI_API_KEY" not in os.environ:
         raise ValueError(
             "OPENAI_API_KEY environment variable must be set when using OpenAI API."
         )
+
+    if "LOG_FOLDER" in os.environ:
+        log_path = f"{os.environ['LOG_FOLDER']}/openai.json"
+        logger.debug(f"Logging to {log_path}")
+        log = []
+        if os.path.exists(log_path):
+            with open(log_path, "r") as f:
+                log = json.loads(f.read())
+        log.append(messages)
+        with open(log_path, "w") as f:
+            f.write(json.dumps(log))
+
+    logger.debug("Calling")
     response = client.chat.completions.create(
         model=model,
         messages=messages,
         temperature=temperature,
-        max_tokens=max_tokens,
+        # max_tokens=max_tokens,
         top_p=top_p,
     )
+    logger.debug("Received response from OpenAI chat completion")
+    logger.debug(f"Response: {response}")
+
     answer: str = response.choices[0].message.content
     return answer
 

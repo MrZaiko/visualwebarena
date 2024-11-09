@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 import subprocess
@@ -60,9 +61,7 @@ def parse_action(action: str) -> PlaywrightScript:
             assert len(splitted) >= 4
             match splitted[2:]:
                 case [name, operation]:
-                    return PlaywrightScript(
-                        "get_by_role", destination, name, operation
-                    )
+                    return PlaywrightScript("get_by_role", destination, name, operation)
                 case [name, operation, value]:
                     return PlaywrightScript(
                         "get_by_role", destination, name, operation, value
@@ -119,9 +118,7 @@ class ScriptBrowserEnv(Env[dict[str, Observation], Action]):
                 self.text_observation_type = observation_type  # type: ignore[assignment]
                 self.main_observation_type = "image"
             case _:
-                raise ValueError(
-                    f"Unsupported observation type: {observation_type}"
-                )
+                raise ValueError(f"Unsupported observation type: {observation_type}")
 
         self.observation_handler = ObservationHandler(
             self.main_observation_type,
@@ -132,9 +129,7 @@ class ScriptBrowserEnv(Env[dict[str, Observation], Action]):
             captioning_fn,
         )
 
-        self.observation_space = (
-            self.observation_handler.get_observation_space()
-        )
+        self.observation_space = self.observation_handler.get_observation_space()
 
     @beartype
     def setup(self, config_file: Path | None = None) -> None:
@@ -288,6 +283,8 @@ class ScriptBrowserEnv(Env[dict[str, Observation], Action]):
             )
             success = True
         except Exception as e:
+            logger = logging.getLogger("logger")
+            logger.error(f"Failed to execute action: {e}")
             fail_error = str(e)
 
         observation = self._get_obs()

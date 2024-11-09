@@ -1,4 +1,5 @@
 import json
+import logging
 import pkgutil
 import re
 from collections import defaultdict
@@ -19,13 +20,13 @@ from playwright.sync_api import CDPSession, Page, ViewportSize
 
 from browser_env.constants import (
     ASCII_CHARSET,
-    FREQ_UNICODE_CHARSET,
-    IGNORED_ACTREE_PROPERTIES,
-    INJECTED_ATTR_NAME,
-    UTTERANCE_MAX_LENGTH,
     BID_ATTR,
     DATA_REGEXP,
+    FREQ_UNICODE_CHARSET,
+    IGNORED_ACTREE_PROPERTIES,
     IN_VIEWPORT_RATIO_THRESHOLD,
+    INJECTED_ATTR_NAME,
+    UTTERANCE_MAX_LENGTH,
 )
 
 from .utils import (
@@ -153,7 +154,7 @@ class TextObervationProcessor(ObservationProcessor):
         info: BrowserInfo = {"DOMTree": tree, "config": config}
 
         return info
-    
+
     @staticmethod
     def get_bounding_client_rect(
         client: CDPSession, backend_node_id: str
@@ -185,6 +186,10 @@ class TextObervationProcessor(ObservationProcessor):
             )
             return response
         except Exception as e:
+            logger = logging.getLogger("logger")
+            logger.error(
+                f"Failed to get bounding client rect for backend_node_id {backend_node_id}: {e}"
+            )
             return {"result": {"subtype": "error"}}
 
     @staticmethod
@@ -387,6 +392,8 @@ class TextObervationProcessor(ObservationProcessor):
                     tree_str += f"{indent}{node_str}\n"
 
             except Exception as e:
+                logger = logging.getLogger("logger")
+                logger.error(f"Failed to process DOM node: {e}")
                 valid_node = False
 
             for child_ids in node["childIds"]:
@@ -432,10 +439,7 @@ class TextObervationProcessor(ObservationProcessor):
                 # always inside the viewport
                 node["union_bound"] = [0.0, 0.0, 10.0, 10.0]
             else:
-                response = self.get_bounding_client_rect(
-                    client,
-                    backend_node_id
-                )
+                response = self.get_bounding_client_rect(client, backend_node_id)
                 if response.get("result", {}).get("subtype", "") == "error":
                     node["union_bound"] = None
                 else:
@@ -535,10 +539,11 @@ class TextObervationProcessor(ObservationProcessor):
                         if property["name"] in IGNORED_ACTREE_PROPERTIES:
                             continue
                         properties.append(
-                            f'{property["name"]}: {property["value"]["value"]}'
+                            f"{property['name']}: {property['value']['value']}"
                         )
-                    except KeyError:
-                        pass
+                    except KeyError as e:
+                        logger = logging.getLogger("logger")
+                        logger.error(f"KeyError while extracting property: {e}")
 
                 if properties:
                     node_str += " " + " ".join(properties)
@@ -576,6 +581,8 @@ class TextObervationProcessor(ObservationProcessor):
                     }
 
             except Exception as e:
+                logger = logging.getLogger("logger")
+                logger.error(f"Failed to process DOM node: {e}")
                 valid_node = False
 
             for _, child_node_id in enumerate(node["childIds"]):
@@ -629,7 +636,8 @@ class TextObervationProcessor(ObservationProcessor):
                     caption = self.captioning_fn([image])[0].strip()
                     self.url2caption[page.url] = remove_unicode(caption)
                 except Exception as e:
-                    print("L579 WARNING: ", e)
+                    logger = logging.getLogger("logger")
+                    logger.error(f"Failed to caption image from URL: {e}")
             content = self.url2caption.get(page.url, "Image")
 
         else:
@@ -644,7 +652,8 @@ class TextObervationProcessor(ObservationProcessor):
                         if image_url not in self.url2caption:
                             image_urls.append(image_url)
                     except Exception as e:
-                        print("L604 WARNING: ", e)
+                        logger = logging.getLogger("logger")
+                        logger.error(f"Failed to get image URL: {e}")
 
                 # Run image captioning on image_url pixels. This is for models which use captioning as a baseline.
                 if len(image_urls) > 0:
@@ -659,7 +668,10 @@ class TextObervationProcessor(ObservationProcessor):
                                 image_pixels.append(image)
                                 valid_urls.append(url)
                             except Exception as e:
-                                print("L616 WARNING: ", e)
+                                logger = logging.getLogger("logger")
+                                logger.error(
+                                    f"Failed to load image from URL {url}: {e}"
+                                )
 
                     # Caption images.
                     if image_pixels:
@@ -672,11 +684,12 @@ class TextObervationProcessor(ObservationProcessor):
                                     self.captioning_fn(image_pixels[i : i + bs])
                                 )
                             except Exception as e:
-                                print("L628 WARNING: ", e)
+                                logger = logging.getLogger("logger")
+                                logger.error(f"Failed to caption images batch: {e}")
                                 captions.extend([""] * len(image_pixels[i : i + bs]))
-                        assert len(valid_urls) == len(
-                            captions
-                        ), f"len(images)={len(valid_urls)}, len(captions)={len(captions)}"
+                        assert len(valid_urls) == len(captions), (
+                            f"len(images)={len(valid_urls)}, len(captions)={len(captions)}"
+                        )
                         for image_url, caption in zip(valid_urls, captions):
                             self.url2caption[image_url] = remove_unicode(
                                 caption.strip()
@@ -704,13 +717,12 @@ class TextObervationProcessor(ObservationProcessor):
                         safe_updated_alt = json.dumps(updated_alt)
                         image.evaluate(f"node => node.alt = {safe_updated_alt}")
                     except Exception as e:
-                        print("L653 WARNING:", e)
+                        logger = logging.getLogger("logger")
+                        logger.error(f"Failed to update image alt text: {e}")
 
             if self.observation_type == "accessibility_tree_with_captioner":
                 frame_ax_trees = self.fetch_page_accessibility_tree(
-                    page,
-                    browser_info,
-                    current_viewport_only=self.current_viewport_only
+                    page, browser_info, current_viewport_only=self.current_viewport_only
                 )
                 content, obs_nodes_info = self.parse_accessibility_tree(frame_ax_trees)
                 content = self.clean_accesibility_tree(content)
@@ -733,12 +745,16 @@ class TextObervationProcessor(ObservationProcessor):
                 else:
                     tab_titles[idx] = f"Tab {idx}: {open_tabs[idx].title()}"
             tab_title_str = " | ".join(tab_titles)
-        except Exception:
+        except Exception as e:
+            logger = logging.getLogger("logger")
+            logger.error(f"Failed to get tab titles: {e}")
             tab_title_str = " | ".join([f"Tab {idx}" for idx in range(len(open_tabs))])
 
         try:
             browser_info = self.fetch_browser_info(page)
-        except Exception:
+        except Exception as e:
+            logger = logging.getLogger("logger")
+            logger.error(f"Failed to fetch browser info, retrying after page load: {e}")
             page.wait_for_load_state("load", timeout=500)
             browser_info = self.fetch_browser_info(page)
 
@@ -928,9 +944,7 @@ class ImageObservationProcessor(ObservationProcessor):
                 if pd.notna(row["TextContent"]):
                     content += (
                         row["TextContent"].strip().replace("\n", "").replace("\t", "")
-                    )[
-                        :200
-                    ]  # Limit to 200 characters to avoid having too much text
+                    )[:200]  # Limit to 200 characters to avoid having too much text
 
                 # Check if the text is a CSS selector
                 if content and not (content.startswith(".") and "{" in content):
@@ -1072,9 +1086,7 @@ class ImageObservationProcessor(ObservationProcessor):
                             .strip()
                             .replace("\n", "")
                             .replace("\t", "")
-                        )[
-                            :200
-                        ]  # Limit to 200 characters
+                        )[:200]  # Limit to 200 characters
                     text_content_elements.append(
                         f"[{unique_id}] [{row['Element']}] [{content}]"
                     )
@@ -1112,7 +1124,9 @@ class ImageObservationProcessor(ObservationProcessor):
     def process(self, page: Page) -> npt.NDArray[np.uint8]:
         try:
             browser_info = self.fetch_browser_info(page)
-        except Exception:
+        except Exception as e:
+            logger = logging.getLogger("logger")
+            logger.error(f"Failed to fetch browser info, retrying after page load: {e}")
             page.wait_for_load_state("load", timeout=500)
             browser_info = self.fetch_browser_info(page)
 
@@ -1133,7 +1147,11 @@ class ImageObservationProcessor(ObservationProcessor):
                 self.meta_data["obs_nodes_info"] = id2center
                 screenshot_som = np.array(bbox_img)
                 return screenshot_som, content_str
-            except:
+            except Exception as e:
+                logger = logging.getLogger("logger")
+                logger.error(
+                    f"Failed to process SoM image, retrying after page load: {e}"
+                )
                 page.wait_for_event("load")
                 screenshot_bytes = page.screenshot()
                 som_bboxes = self.get_page_bboxes(page)
@@ -1150,7 +1168,11 @@ class ImageObservationProcessor(ObservationProcessor):
         else:
             try:
                 screenshot = png_bytes_to_numpy(page.screenshot())
-            except:
+            except Exception as e:
+                logger = logging.getLogger("logger")
+                logger.error(
+                    f"Failed to take screenshot, retrying after page load: {e}"
+                )
                 page.wait_for_event("load")
                 screenshot = png_bytes_to_numpy(page.screenshot())
             return screenshot, ""

@@ -1,5 +1,7 @@
 """Implements helper functions to assist evaluation cases where other evaluators are not suitable."""
+
 import json
+import logging
 from datetime import datetime, timezone
 from typing import Any, Union
 from urllib.parse import urlparse
@@ -64,9 +66,7 @@ def shopping_get_latest_order_url() -> str:
         "searchCriteria[pageSize]": "1",
     }
 
-    response = requests.get(
-        f"{SHOPPING}/rest/V1/orders", params=params, headers=header
-    )
+    response = requests.get(f"{SHOPPING}/rest/V1/orders", params=params, headers=header)
     assert response.status_code == 200
     response_obj = response.json()["items"][0]
     order_id = int(response_obj["increment_id"])
@@ -154,9 +154,7 @@ def shopping_get_sku_product_page_url(sku: str) -> str:
         "Authorization": f"Bearer {shopping_get_auth_token()}",
         "Content-Type": "application/json",
     }
-    response = requests.get(
-        f"{SHOPPING}/rest/V1/products/{sku}", headers=header
-    )
+    response = requests.get(f"{SHOPPING}/rest/V1/products/{sku}", headers=header)
     assert response.status_code == 200
     response_obj = response.json()
     if len(response_obj) == 0:
@@ -229,6 +227,8 @@ def shopping_get_all_product_order(
         )
         return result
     except Exception as e:
+        logger = logging.getLogger("logger")
+        logger.error(f"Failed to get all product order: {e}")
         result = []
 
     return result
@@ -240,14 +240,14 @@ def shopping_get_order_product_name_list(page: Page | PseudoPage) -> str:
         products = shopping_get_all_product_order(page)
 
         return " |OR| ".join([p["name"] for p in products])
-    except Exception:
+    except Exception as e:
+        logger = logging.getLogger("logger")
+        logger.error(f"Failed to get order product name list: {e}")
         return ""
 
 
 @beartype
-def shopping_get_order_product_quantity(
-    page: Page | PseudoPage, sku: str
-) -> int:
+def shopping_get_order_product_quantity(page: Page | PseudoPage, sku: str) -> int:
     try:
         if "|OR|" in sku:
             skus = sku.split(" |OR| ")
@@ -260,7 +260,9 @@ def shopping_get_order_product_quantity(
                 # Ordered{qty}
                 return int(product["qty"][7:])
         return 0
-    except Exception:
+    except Exception as e:
+        logger = logging.getLogger("logger")
+        logger.error(f"Failed to get order product quantity for sku {sku}: {e}")
         return 0
 
 
@@ -276,13 +278,15 @@ def shopping_get_order_product_option(
                 return product["options"][option_name]
         return ""
     except Exception as e:
+        logger = logging.getLogger("logger")
+        logger.error(
+            f"Failed to get order product option for sku {sku}, option {option_name}: {e}"
+        )
         return ""
 
 
 @beartype
-def shopping_get_product_attributes(
-    page: Page | PseudoPage, attribute: str
-) -> str:
+def shopping_get_product_attributes(page: Page | PseudoPage, attribute: str) -> str:
     # Get the values of all cells in the table for the given attribute
     try:
         result = page.evaluate(
@@ -310,7 +314,9 @@ def shopping_get_product_attributes(
                 }})();
             """
         )
-    except Exception:
+    except Exception as e:
+        logger = logging.getLogger("logger")
+        logger.error(f"Failed to get product attributes for {attribute}: {e}")
         result = ""
 
     return result
@@ -329,7 +335,9 @@ def shopping_get_product_price(page: Page | PseudoPage) -> Union[float, int]:
                 }})();
             """
         )
-    except Exception:
+    except Exception as e:
+        logger = logging.getLogger("logger")
+        logger.error(f"Failed to get product price: {e}")
         result = 0
 
     return result
@@ -348,7 +356,9 @@ def shopping_get_num_reviews(page: Page | PseudoPage) -> int:
                 )();
             """
         )
-    except Exception:
+    except Exception as e:
+        logger = logging.getLogger("logger")
+        logger.error(f"Failed to get num reviews: {e}")
         result = 0
 
     return result
@@ -366,7 +376,9 @@ def shopping_get_rating_as_percentage(page: Page | PseudoPage) -> int:
                 }})();
             """
         )
-    except Exception:
+    except Exception as e:
+        logger = logging.getLogger("logger")
+        logger.error(f"Failed to get rating as percentage: {e}")
         rating = 0
 
     return rating
@@ -390,7 +402,9 @@ def get_query_text(page: Page | PseudoPage, selector: str) -> str:
                 }})();
             """
         )
-    except Exception:
+    except Exception as e:
+        logger = logging.getLogger("logger")
+        logger.error(f"Failed to get query text for selector '{selector}': {e}")
         result = ""
 
     return result
@@ -423,6 +437,8 @@ def reddit_get_post_url(url: str) -> str:
 
 @beartype
 def reddit_get_post_comment_tree(page: Page | PseudoPage) -> Dict[str, Any]:
+    logger = logging.getLogger("logger")
+
     try:
         comment_tree = page.evaluate(
             f"""(function buildCommentTree(node, data_level) {{
@@ -442,7 +458,9 @@ def reddit_get_post_comment_tree(page: Page | PseudoPage) -> Dict[str, Any]:
     return tree;
 }})(document.querySelector("#main"), 0)"""
         )
-    except Exception:
+    except Exception as e:
+        logger = logging.getLogger("logger")
+        logger.error(f"Failed to get comment tree: {e}")
         comment_tree = {}
 
     return comment_tree
@@ -452,16 +470,30 @@ def reddit_get_post_comment_tree(page: Page | PseudoPage) -> Dict[str, Any]:
 def reddit_get_latest_comment_obj_by_username(
     page: Page | PseudoPage, username: str
 ) -> Dict[str, Any]:
+    logger = logging.getLogger("logger")
+
     try:
         comment_tree = reddit_get_post_comment_tree(page)
+        logger.debug(f"Got comment tree: {comment_tree}")
         latest_time = datetime.min.replace(tzinfo=timezone.utc)
         comment = {}
 
         def dfs(node):
             nonlocal latest_time
             nonlocal comment
+
+            logger.debug(f"Visiting node: {node}")
+
             if node["username"] == username:
+                logger.debug(
+                    f"Found comment by {username} posted at {node['time']} (min: {latest_time})"
+                )
+
+                node["time"] = node["time"].replace(tzinfo=timezone.utc)
+
                 if node["time"] > latest_time:
+                    logger.debug(f"Updating comment for user {username}")
+
                     comment = {
                         "username": node["username"],
                         "net_score": node["net_score"],
@@ -473,9 +505,13 @@ def reddit_get_latest_comment_obj_by_username(
             for child in node["children"]:
                 dfs(child)
 
+        logger.debug(f"Starting DFS for user {username}")
         dfs(comment_tree)
+        logger.debug(f"Finished DFS for user {username}, final comment: {comment}")
 
     except Exception as e:
+        logger = logging.getLogger("logger")
+        logger.error(f"Error occurred while processing user {username}: {e}")
         comment = {}
     return comment
 
@@ -484,12 +520,20 @@ def reddit_get_latest_comment_obj_by_username(
 def reddit_get_latest_comment_content_by_username(
     page: Page | PseudoPage, username: str
 ) -> str:
+    logger = logging.getLogger("logger")
+    logger.debug(f"Getting latest comment of {username} on {page}")
+
     try:
         comment = reddit_get_latest_comment_obj_by_username(page, username)
         content = comment["content"]
 
-    except Exception:
+    except Exception as e:
+        logger = logging.getLogger("logger")
+        logger.error(f"Failed to get latest comment content for user {username}: {e}")
         content = ""
+
+    logger = logging.getLogger("logger")
+    logger.debug(f"Latest comment of {username} is: {content}")
 
     return content
 
@@ -521,7 +565,9 @@ def reddit_get_parent_comment_obj_of_latest_comment_by_username(
 
         dfs(comment_tree)
 
-    except Exception:
+    except Exception as e:
+        logger = logging.getLogger("logger")
+        logger.error(f"Failed to get parent comment obj for user {username}: {e}")
         comment = {}
     return comment
 
@@ -536,16 +582,16 @@ def reddit_get_parent_comment_username_of_latest_comment_by_username(
         )
         username = comment["username"]
 
-    except Exception:
+    except Exception as e:
+        logger = logging.getLogger("logger")
+        logger.error(f"Failed to get parent comment username for user {username}: {e}")
         username = ""
 
     return username
 
 
 @beartype
-def gitlab_get_project_memeber_role(
-    page: Page | PseudoPage, account_name: str
-) -> str:
+def gitlab_get_project_memeber_role(page: Page | PseudoPage, account_name: str) -> str:
     # get the account index
     try:
         account_idx = page.evaluate(
@@ -570,7 +616,11 @@ def gitlab_get_project_memeber_role(
                 return document.querySelectorAll("td.col-max-role span")[{account_idx}].outerText;
             }})()"""
         )
-    except Exception:
+    except Exception as e:
+        logger = logging.getLogger("logger")
+        logger.error(
+            f"Failed to get project member role for account {account_name}: {e}"
+        )
         role = ""
 
     return role

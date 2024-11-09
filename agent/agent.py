@@ -1,5 +1,6 @@
 import argparse
 import json
+import logging
 from typing import Any, Optional
 
 import tiktoken
@@ -7,6 +8,7 @@ from beartype import beartype
 from PIL import Image
 
 from agent.prompts import *
+from agent.prompts.prompt_constructor import MultimodalCoTPromptConstructor
 from browser_env import Trajectory
 from browser_env.actions import (
     Action,
@@ -69,10 +71,10 @@ class TeacherForcingAgent(Agent):
                 elif self.action_set_tag == "id_accessibility_tree":
                     cur_action = create_id_based_action(a_str)
                 else:
-                    raise ValueError(
-                        f"Unknown action type {self.action_set_tag}"
-                    )
+                    raise ValueError(f"Unknown action type {self.action_set_tag}")
             except ActionParsingError as e:
+                logger = logging.getLogger("logger")
+                logger.error(f"ActionParsingError while parsing action '{a_str}': {e}")
                 cur_action = create_none_action()
 
             cur_action["raw_prediction"] = a_str
@@ -107,7 +109,7 @@ class PromptAgent(Agent):
         action_set_tag: str,
         lm_config: lm_config.LMConfig,
         prompt_constructor: PromptConstructor,
-        captioning_fn = None,
+        captioning_fn=None,
     ) -> None:
         super().__init__()
         self.lm_config = lm_config
@@ -115,8 +117,19 @@ class PromptAgent(Agent):
         self.action_set_tag = action_set_tag
         self.captioning_fn = captioning_fn
 
+        logger = logging.getLogger("logger")
+        logger.debug(f"Constructing Prompt with model: {lm_config.model}")
+        logger.debug(f"Type is {type(prompt_constructor)}")
+
         # Check if the model is multimodal.
-        if ("gemini" in lm_config.model or "gpt-4" in lm_config.model and "vision" in lm_config.model) and type(prompt_constructor) == MultimodalCoTPromptConstructor:
+        if (
+            "gemini" in lm_config.model
+            or "gpt-4" in lm_config.model
+            or "gpt-5" in lm_config.model
+            or "vision" in lm_config.model
+        ) and type(prompt_constructor) is MultimodalCoTPromptConstructor:
+            logger.debug("Multimodal")
+
             self.multimodal_inputs = True
         else:
             self.multimodal_inputs = False
@@ -126,11 +139,19 @@ class PromptAgent(Agent):
 
     @beartype
     def next_action(
-        self, trajectory: Trajectory, intent: str, meta_data: dict[str, Any], images: Optional[list[Image.Image]] = None,
-        output_response: bool = False
+        self,
+        trajectory: Trajectory,
+        intent: str,
+        meta_data: dict[str, Any],
+        images: Optional[list[Image.Image]] = None,
+        output_response: bool = False,
     ) -> Action:
+        logger = logging.getLogger("logger")
+        logger.debug("In next action")
+
         # Create page screenshot image for multimodal models.
         if self.multimodal_inputs:
+            logger.debug("Multimodal")
             page_screenshot_arr = trajectory[-1]["observation"]["image"]
             page_screenshot_img = Image.fromarray(
                 page_screenshot_arr
@@ -142,41 +163,38 @@ class PromptAgent(Agent):
                 image_input_caption = ""
                 for image_i, image in enumerate(images):
                     if image_i == 0:
-                        image_input_caption += f'Input image {image_i+1}: "{self.captioning_fn([image])[0]}"'
+                        image_input_caption += f'Input image {image_i + 1}: "{self.captioning_fn([image])[0]}"'
                     else:
-                        image_input_caption += f'input image {image_i+1}: "{self.captioning_fn([image])[0]}"'
+                        image_input_caption += f'input image {image_i + 1}: "{self.captioning_fn([image])[0]}"'
                     if len(images) > 1:
                         image_input_caption += ", "
                 # Update intent to include captions of input images.
                 intent = f"{image_input_caption}\nIntent: {intent}"
             elif not self.multimodal_inputs:
-                print(
-                    "WARNING: Input image provided but no image captioner available."
-                )
+                print("WARNING: Input image provided but no image captioner available.")
 
         if self.multimodal_inputs:
+            logger.debug(f"Multimodal with {images}")
             prompt = self.prompt_constructor.construct(
                 trajectory, intent, page_screenshot_img, images, meta_data
             )
         else:
-            prompt = self.prompt_constructor.construct(
-                trajectory, intent, meta_data
-            )
+            logger.debug("Not multimodal")
+
+            prompt = self.prompt_constructor.construct(trajectory, intent, meta_data)
         lm_config = self.lm_config
         n = 0
         while True:
             response = call_llm(lm_config, prompt)
-            force_prefix = self.prompt_constructor.instruction[
-                "meta_data"
-            ].get("force_prefix", "")
+            force_prefix = self.prompt_constructor.instruction["meta_data"].get(
+                "force_prefix", ""
+            )
             response = f"{force_prefix}{response}"
             if output_response:
-                print(f'Agent: {response}', flush=True)
+                print(f"Agent: {response}", flush=True)
             n += 1
             try:
-                parsed_response = self.prompt_constructor.extract_action(
-                    response
-                )
+                parsed_response = self.prompt_constructor.extract_action(response)
                 if self.action_set_tag == "id_accessibility_tree":
                     action = create_id_based_action(parsed_response)
                 elif self.action_set_tag == "playwright":
@@ -184,12 +202,13 @@ class PromptAgent(Agent):
                 elif self.action_set_tag == "som":
                     action = create_id_based_action(parsed_response)
                 else:
-                    raise ValueError(
-                        f"Unknown action type {self.action_set_tag}"
-                    )
+                    raise ValueError(f"Unknown action type {self.action_set_tag}")
                 action["raw_prediction"] = response
                 break
             except ActionParsingError as e:
+                logger.error(
+                    f"ActionParsingError while parsing response (attempt {n}): {e}"
+                )
                 if n >= lm_config.gen_config["max_retry"]:
                     action = create_none_action()
                     action["raw_prediction"] = response
@@ -218,10 +237,8 @@ def construct_agent(args: argparse.Namespace, captioning_fn=None) -> Agent:
             action_set_tag=args.action_set_tag,
             lm_config=llm_config,
             prompt_constructor=prompt_constructor,
-            captioning_fn=captioning_fn
+            captioning_fn=captioning_fn,
         )
     else:
-        raise NotImplementedError(
-            f"agent type {args.agent_type} not implemented"
-        )
+        raise NotImplementedError(f"agent type {args.agent_type} not implemented")
     return agent

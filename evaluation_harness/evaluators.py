@@ -1,7 +1,9 @@
 """base class for evaluation"""
+
 # answer string match
 import importlib
 import json
+import logging
 import re
 import time
 import urllib
@@ -53,19 +55,18 @@ class Evaluator(object):
         self.eval_tag = eval_tag
 
     def __call__(
-        self,
-        trajectory: Trajectory,
-        config_file: Path | str,
-        page: Page | PseudoPage
+        self, trajectory: Trajectory, config_file: Path | str, page: Page | PseudoPage
     ) -> float:
         raise NotImplementedError
 
     @staticmethod
     def get_last_action(trajectory: Trajectory) -> Action:
+        logger = logging.getLogger("logger")
         try:
             is_bearable(trajectory[-1], Action)
             last_action = trajectory[-1]
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to get last action from trajectory: {e}")
             raise ValueError(
                 "The last element of trajectory should be an action, add a fake stop action if needed"
             )
@@ -74,10 +75,12 @@ class Evaluator(object):
 
     @staticmethod
     def get_last_state(trajectory: Trajectory) -> StateInfo:
+        logger = logging.getLogger("logger")
         try:
             is_bearable(trajectory[-2], StateInfo)
             last_state = trajectory[-2]
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to get last state from trajectory: {e}")
             raise ValueError(
                 "The second last element of trajectory should be a state, add a fake stop action if needed"
             )
@@ -98,9 +101,10 @@ class NumericEvaluator(Evaluator):
                 s = s.replace(",", "")
 
             return int(s)
-        except ValueError:
+        except ValueError as e:
             # Return None if the string cannot be converted to int
-            print(f"[NumericEvaluator error]: Cannot convert {s} to int")
+            logger = logging.getLogger("logger")
+            logger.error(f"[NumericEvaluator error]: Cannot convert {s} to int: {e}")
             return None
 
     @staticmethod
@@ -159,8 +163,7 @@ class StringEvaluator(Evaluator):
         if isinstance(pred, int):
             pred = str(pred)
         return float(
-            StringEvaluator.clean_answer(pred)
-            == StringEvaluator.clean_answer(ref)
+            StringEvaluator.clean_answer(pred) == StringEvaluator.clean_answer(ref)
         )
 
     @staticmethod
@@ -204,7 +207,7 @@ class StringEvaluator(Evaluator):
         self,
         trajectory: Trajectory,
         config_file: Path | str,
-        page: Page | PseudoPage | None = None
+        page: Page | PseudoPage | None = None,
     ) -> float:
         with open(config_file, "r") as f:
             configs = json.load(f)
@@ -228,9 +231,7 @@ class StringEvaluator(Evaluator):
                             value_or = v.split(" |OR| ")
                             score *= any(
                                 [
-                                    NumericEvaluator.compare_inequality(
-                                        pred, value
-                                    )
+                                    NumericEvaluator.compare_inequality(pred, value)
                                     for value in value_or
                                 ]
                             )
@@ -238,13 +239,13 @@ class StringEvaluator(Evaluator):
                     assert isinstance(value, list)
                     for must_value in value:
                         value_or = must_value.split(" |OR| ")
-                        score *= any([self.must_include(ref=v, pred=pred) for v in value_or])
+                        score *= any(
+                            [self.must_include(ref=v, pred=pred) for v in value_or]
+                        )
                 case "must_exclude":
                     assert isinstance(value, list)
                     for must_excl_value in value:
-                        score *= self.must_exclude(
-                            ref=must_excl_value, pred=pred
-                        )
+                        score *= self.must_exclude(ref=must_excl_value, pred=pred)
                 case "one_of":
                     assert isinstance(value, list)
                     found = False
@@ -285,7 +286,7 @@ class StringSoftEvaluator(Evaluator):
         self,
         trajectory: Trajectory,
         config_file: Path | str,
-        page: Page | PseudoPage | None = None
+        page: Page | PseudoPage | None = None,
     ) -> float:
         with open(config_file, "r") as f:
             configs = json.load(f)
@@ -304,10 +305,7 @@ class URLExactEvaluator(Evaluator):
     """Check whether the URL is exactly the same as of the reference URLs"""
 
     def __call__(
-        self,
-        trajectory: Trajectory,
-        config_file: Path | str,
-        page: Page | PseudoPage
+        self, trajectory: Trajectory, config_file: Path | str, page: Page | PseudoPage
     ) -> float:
         with open(config_file, "r") as f:
             configs = json.load(f)
@@ -343,11 +341,10 @@ class HTMLContentExactEvaluator(Evaluator):
     """Check whether the contents appear in the page"""
 
     def __call__(
-        self,
-        trajectory: Trajectory,
-        config_file: Path | str,
-        page: Page | PseudoPage
+        self, trajectory: Trajectory, config_file: Path | str, page: Page | PseudoPage
     ) -> float:
+        logger = logging.getLogger("logger")
+
         with open(config_file, "r") as f:
             configs = json.load(f)
 
@@ -355,6 +352,7 @@ class HTMLContentExactEvaluator(Evaluator):
 
         score = 1.0
         for target in targets:
+            logger.debug(f"Oppening {target}")
             target_url: str = target["url"]  # which url to check
             if target_url.startswith("func"):
                 func = target_url.split("func:")[1]
@@ -372,21 +370,20 @@ class HTMLContentExactEvaluator(Evaluator):
             if not locator.strip():
                 selected_element = page.content()
             # use JS to select the element
-            elif locator.startswith("document.") or locator.startswith(
-                "[...document."
-            ):
+            elif locator.startswith("document.") or locator.startswith("[...document."):
                 if "prep_actions" in target:
                     try:
                         for prep_action in target["prep_actions"]:
                             page.evaluate(f"() => {prep_action}")
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.error(f"Failed to execute prep_action: {e}")
                 try:
                     selected_element = str(page.evaluate(f"() => {locator}"))
                     if not selected_element:
                         selected_element = ""
-                except Exception:
+                except Exception as e:
                     # the page is wrong, return empty
+                    logger.error(f"Failed to evaluate locator '{locator}': {e}")
                     selected_element = ""
             elif locator.startswith("lambda:"):
                 try:
@@ -394,8 +391,9 @@ class HTMLContentExactEvaluator(Evaluator):
                     selected_element = page.evaluate(locator)
                     if not selected_element:
                         selected_element = None
-                except Exception:
+                except Exception as e:
                     # the page is wrong, return empty
+                    logger.error(f"Failed to evaluate lambda locator '{locator}': {e}")
                     selected_element = None
             # run program to call API
             elif locator.startswith("func:"):  # a helper function
@@ -437,14 +435,10 @@ class HTMLContentExactEvaluator(Evaluator):
                         content, pred=selected_element
                     )
             elif "required_values" in target["required_contents"]:
-                required_values = target["required_contents"][
-                    "required_values"
-                ]
+                required_values = target["required_contents"]["required_values"]
                 assert isinstance(required_values, list)
                 if isinstance(selected_element, str):
-                    selected_element = NumericEvaluator.str_2_int(
-                        selected_element
-                    )
+                    selected_element = NumericEvaluator.str_2_int(selected_element)
                 if selected_element is None:
                     score = 0.0
                 else:
@@ -494,7 +488,7 @@ class PageImageEvaluator(Evaluator):
         self,
         trajectory: Trajectory,
         config_file: Path | str,
-        page: Page | PseudoPage | None = None
+        page: Page | PseudoPage | None = None,
     ) -> float:
         with open(config_file, "r") as f:
             configs = json.load(f)
@@ -521,9 +515,7 @@ class PageImageEvaluator(Evaluator):
                 elements = page.query_selector_all(locator)
                 images = []
                 for element in elements:
-                    is_img = element.evaluate(
-                        'element => element.tagName === "IMG"'
-                    )
+                    is_img = element.evaluate('element => element.tagName === "IMG"')
                     if is_img:
                         images.append(element)
                     else:
@@ -539,16 +531,13 @@ class PageImageEvaluator(Evaluator):
                 try:
                     # Get image from URL.
                     image_url = image.get_attribute("src")
-                    if not image_url.startswith(
-                        ("http://", "https://", "www.")
-                    ):
+                    if not image_url.startswith(("http://", "https://", "www.")):
                         image_url = urljoin(page.url, image_url)
-                    image = Image.open(
-                        requests.get(image_url, stream=True).raw
-                    )
+                    image = Image.open(requests.get(image_url, stream=True).raw)
                     all_image_pixels.append(image)
                 except Exception as e:
-                    print("[WARNING]: ", e)
+                    logger = logging.getLogger("logger")
+                    logger.error(f"Failed to load image from URL: {e}")
 
             score = 1.0
             if all_image_pixels == []:
@@ -556,9 +545,9 @@ class PageImageEvaluator(Evaluator):
             else:
                 # Run the VQA eval on the image elements.
                 eval_vqas = query.get("eval_vqa", [])
-                assert (
-                    len(eval_vqas) > 0 or "eval_fuzzy_image_match" in query
-                ), "eval_vqa must have at least 2 questions or eval_fuzzy_image_match must be True"
+                assert len(eval_vqas) > 0 or "eval_fuzzy_image_match" in query, (
+                    "eval_vqa must have at least 2 questions or eval_fuzzy_image_match must be True"
+                )
                 for qa in eval_vqas:
                     question, answer = qa["question"], qa["answer"]
                     prompt = f"Q: {question} A:"
@@ -566,18 +555,12 @@ class PageImageEvaluator(Evaluator):
                         all_image_pixels, [prompt] * len(all_image_pixels)
                     )
                     score *= float(
-                        any(
-                            [answer.lower() in ans.lower() for ans in pred_ans]
-                        )
+                        any([answer.lower() in ans.lower() for ans in pred_ans])
                     )
 
                 if "eval_fuzzy_image_match" in query:
-                    ssim_threshold = query.get(
-                        "ssim_threshold", self.ssim_threshold
-                    )
-                    exact_match_imgs = query["eval_fuzzy_image_match"].split(
-                        " |OR| "
-                    )
+                    ssim_threshold = query.get("ssim_threshold", self.ssim_threshold)
+                    exact_match_imgs = query["eval_fuzzy_image_match"].split(" |OR| ")
                     all_exact_match_pixels = []
 
                     for exact_match_img in exact_match_imgs:
@@ -609,12 +592,8 @@ class EvaluatorComb:
         self.evaluators = evaluators
 
     def __call__(
-        self,
-        trajectory: Trajectory,
-        config_file: Path | str,
-        page: Page | PseudoPage
+        self, trajectory: Trajectory, config_file: Path | str, page: Page | PseudoPage
     ) -> float:
-
         score = 1.0
         for evaluator in self.evaluators:
             cur_score = evaluator(trajectory, config_file, page)
@@ -624,15 +603,17 @@ class EvaluatorComb:
 
 
 @beartype
-def evaluator_router(
-    config_file: Path | str, captioning_fn=None
-) -> EvaluatorComb:
+def evaluator_router(config_file: Path | str, captioning_fn=None) -> EvaluatorComb:
     """Router to get the evaluator class"""
     with open(config_file, "r") as f:
         configs = json.load(f)
 
     eval_types = configs["eval"]["eval_types"]
     evaluators: list[Evaluator | EvaluatorPartial] = []
+
+    logger = logging.getLogger("logger")
+    logger.debug(f"Evaluation for {eval_types}")
+
     for eval_type in eval_types:
         match eval_type:
             case "string_match":

@@ -3,6 +3,7 @@ Browser Env action space.
 Inspited by Farama-Foundation/miniwob-plusplus
 """
 import ast
+import logging
 import random
 import re
 import string
@@ -1272,6 +1273,8 @@ def execute_action(
     sleep_after_execution: float = 0.0,
 ) -> Page:
     """Execute the action on the ChromeDriver."""
+    logger = logging.getLogger("logger")
+
     action_type = action["action_type"]
     num_tabs_before = len(browser_ctx.pages)
     match action_type:

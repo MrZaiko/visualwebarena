@@ -1,7 +1,10 @@
 import base64
+import logging
 from dataclasses import dataclass
 from io import BytesIO
 from typing import Any, Dict, TypedDict, Union
+
+logger = logging.getLogger("logger")
 
 import numpy as np
 import numpy.typing as npt
@@ -11,7 +14,9 @@ from PIL import Image
 try:
     from vertexai.preview.generative_models import Image as VertexImage
 except:
-    print('Google Cloud not set up, skipping import of vertexai.preview.generative_models.Image')
+    print(
+        "Google Cloud not set up, skipping import of vertexai.preview.generative_models.Image"
+    )
 
 
 @dataclass
@@ -32,11 +37,23 @@ def png_bytes_to_numpy(png: bytes) -> npt.NDArray[np.uint8]:
     return np.array(Image.open(BytesIO(png)))
 
 
-def pil_to_b64(img: Image.Image) -> str:
+def pil_to_b64(img: Image.Image, quality: int = 75) -> str:
+    """Convert PIL Image to base64 string using JPEG compression.
+
+    Args:
+        img: PIL Image to convert
+        quality: JPEG quality (1-100). Lower = smaller file, lower quality. Default 75.
+    """
     with BytesIO() as image_buffer:
+        # Convert to RGB if necessary (JPEG doesn't support RGBA)
         img.save(image_buffer, format="PNG")
+
+        # if img.mode in ("RGBA", "P"):
+        # img = img.convert("RGB")
         byte_data = image_buffer.getvalue()
         img_b64 = base64.b64encode(byte_data).decode("utf-8")
+        size_mb = len(img_b64) / (1024 * 1024)
+        logger.debug(f"Generated image size: {size_mb:.2f} MB (PNG quality={quality})")
         img_b64 = "data:image/png;base64," + img_b64
     return img_b64
 

@@ -1,5 +1,6 @@
 """Tools to generate from Gemini prompts."""
 
+import logging
 import random
 import time
 from typing import Any
@@ -33,11 +34,12 @@ def retry_with_exponential_backoff(  # type: ignore
         # Loop until a successful response or max_retries is hit or an exception is raised
         while True:
             try:
-
                 return func(*args, **kwargs)
 
             # Retry on specified errors
             except errors as e:
+                logger = logging.getLogger("logger")
+                logger.error(f"Gemini API error (attempt {num_retries + 1}): {e}")
                 # Increment retries
                 num_retries += 1
 
@@ -55,6 +57,8 @@ def retry_with_exponential_backoff(  # type: ignore
 
             # Raise exceptions for any errors not specified
             except Exception as e:
+                logger = logging.getLogger("logger")
+                logger.error(f"Unexpected error in Gemini API call: {e}")
                 raise e
 
     return wrapper

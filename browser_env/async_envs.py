@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -132,12 +133,18 @@ class AsyncScriptBrowserEnv(Env[npt.NDArray[np.uint8], Action]):
             self.page = await aexecute_action(action, self.page, self.context)
             success = True
         except Exception as e:
+            logger = logging.getLogger("logger")
+            logger.error(f"Failed to execute async action: {e}")
             fail_error = str(e)
 
         try:
             content = await self.page.content()
             screenshot = png_bytes_to_numpy(await self.page.screenshot())
-        except:
+        except Exception as e:
+            logger = logging.getLogger("logger")
+            logger.error(
+                f"Failed to get page content/screenshot, retrying after page load: {e}"
+            )
             await self.page.wait_for_load_state("load")
             content = await self.page.content()
             screenshot = png_bytes_to_numpy(await self.page.screenshot())

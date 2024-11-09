@@ -1,11 +1,15 @@
 import argparse
+import logging
 from typing import Any
 
 try:
     from vertexai.preview.generative_models import Image
+
     from llms import generate_from_gemini_completion
 except:
-    print('Google Cloud not set up, skipping import of vertexai.preview.generative_models.Image and llms.generate_from_gemini_completion')
+    print(
+        "Google Cloud not set up, skipping import of vertexai.preview.generative_models.Image and llms.generate_from_gemini_completion"
+    )
 
 from llms import (
     generate_from_huggingface_completion,
@@ -22,6 +26,8 @@ def call_llm(
     prompt: APIInput,
 ) -> str:
     response: str
+    logger = logging.getLogger("logger")
+    logger.debug(f"Calling LLM: {lm_config}")
     if lm_config.provider == "openai":
         if lm_config.mode == "chat":
             assert isinstance(prompt, list)
@@ -45,9 +51,7 @@ def call_llm(
                 stop_token=lm_config.gen_config["stop_token"],
             )
         else:
-            raise ValueError(
-                f"OpenAI models do not support mode {lm_config.mode}"
-            )
+            raise ValueError(f"OpenAI models do not support mode {lm_config.mode}")
     elif lm_config.provider == "huggingface":
         assert isinstance(prompt, str)
         response = generate_from_huggingface_completion(
@@ -60,9 +64,7 @@ def call_llm(
         )
     elif lm_config.provider == "google":
         assert isinstance(prompt, list)
-        assert all(
-            [isinstance(p, str) or isinstance(p, Image) for p in prompt]
-        )
+        assert all([isinstance(p, str) or isinstance(p, Image) for p in prompt])
         response = generate_from_gemini_completion(
             prompt=prompt,
             engine=lm_config.model,
@@ -71,8 +73,8 @@ def call_llm(
             top_p=lm_config.gen_config["top_p"],
         )
     else:
-        raise NotImplementedError(
-            f"Provider {lm_config.provider} not implemented"
-        )
+        raise NotImplementedError(f"Provider {lm_config.provider} not implemented")
+
+    logger.debug(f"LLM response received: {response}")
 
     return response
