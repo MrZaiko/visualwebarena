@@ -2,17 +2,17 @@
 
 ### Define the model, result directory, and instruction path variables
 model="gpt-4-vision-preview"
-result_dir="reddit_gpt4_som"
-instruction_path="agent/prompts/jsons/p_som_cot_id_actree_3s.json"
+result_dir="results"
+instruction_path="agent/prompts/jsons/p_som_cot_id_actree_3s_metatools.json"
 captioning_model="Salesforce/blip2-flan-t5-xl"
 
 # Define the batch size variable
-batch_size=30
+batch_size=1
 
 # Define the starting and ending indices
-start_idx=0
+start_idx=143
 end_idx=$((start_idx + batch_size))
-max_idx=210
+max_idx=143
 
 # Loop until the starting index is less than or equal to 466
 while [ $start_idx -le $max_idx ]
@@ -20,7 +20,7 @@ do
     # Run the scripts and the Python command with the current indices and defined variables
     bash scripts/reset_reddit.sh
     bash prepare.sh
-    python run.py \
+    uv run run.py \
      --instruction_path $instruction_path \
      --test_start_idx $start_idx \
      --test_end_idx $end_idx \
