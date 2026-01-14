@@ -44,9 +44,9 @@ def get_render_action(
         case "id_accessibility_tree":
             text_meta_data = observation_metadata["text"]
             if action["element_id"] in text_meta_data["obs_nodes_info"]:
-                node_content = text_meta_data["obs_nodes_info"][
-                    action["element_id"]
-                ]["text"]
+                node_content = text_meta_data["obs_nodes_info"][action["element_id"]][
+                    "text"
+                ]
             else:
                 node_content = "No match found"
 
@@ -57,9 +57,7 @@ def get_render_action(
         case "som":
             text_meta_data = observation_metadata["text"]
             if action["element_id"] in text_meta_data["obs_nodes_info"]:
-                node_content = text_meta_data["obs_nodes_info"][
-                    action["element_id"]
-                ]
+                node_content = text_meta_data["obs_nodes_info"][action["element_id"]]
             else:
                 node_content = "No match found"
 
@@ -99,19 +97,17 @@ def get_action_description(
                         action["element_id"]
                     ]["text"]
                     node_content = " ".join(node_content.split()[1:])
-                    action_str = action2str(
-                        action, action_set_tag, node_content
-                    )
+                    action_str = action2str(action, action_set_tag, node_content)
                 else:
-                    action_str = f"Attempt to perfom \"{action_name}\" on element \"[{action['element_id']}]\" but no matching element found. Please check the observation more carefully."
+                    action_str = f'Attempt to perfom "{action_name}" on element "[{action["element_id"]}]" but no matching element found. Please check the observation more carefully.'
             else:
                 if (
                     action["action_type"] == ActionTypes.NONE
                     and prompt_constructor is not None
                 ):
-                    action_splitter = prompt_constructor.instruction[
-                        "meta_data"
-                    ]["action_splitter"]
+                    action_splitter = prompt_constructor.instruction["meta_data"][
+                        "action_splitter"
+                    ]
                     action_str = f'The previous prediction you issued was "{action["raw_prediction"]}". However, the format was incorrect. Ensure that the action is wrapped inside a pair of {action_splitter} and enclose arguments within [] as follows: {action_splitter}action [arg] ...{action_splitter}.'
                 else:
                     action_str = action2str(action, action_set_tag, "")
@@ -132,15 +128,15 @@ def get_action_description(
                         action["element_id"],
                         text_meta_data["obs_nodes_info"],
                     )
-                    action_str = f"Attempt to perfom \"{action_name}\" on element \"[{action['element_id']}]\" but no matching element found. Please check the observation more carefully."
+                    action_str = f'Attempt to perfom "{action_name}" on element "[{action["element_id"]}]" but no matching element found. Please check the observation more carefully.'
             else:
                 if (
                     action["action_type"] == ActionTypes.NONE
                     and prompt_constructor is not None
                 ):
-                    action_splitter = prompt_constructor.instruction[
-                        "meta_data"
-                    ]["action_splitter"]
+                    action_splitter = prompt_constructor.instruction["meta_data"][
+                        "action_splitter"
+                    ]
                     action_str = f'The previous prediction you issued was "{action["raw_prediction"]}". However, the format was incorrect. Ensure that the action is wrapped inside a pair of {action_splitter} and enclose arguments within [] as follows: {action_splitter}action [arg] ...{action_splitter}.'
                 else:
                     action_str = action2str(action, action_set_tag, "")
@@ -157,9 +153,8 @@ def get_action_description(
 class RenderHelper(object):
     """Helper class to render text and image observations and meta data in the trajectory"""
 
-    def __init__(
-        self, config_file: str, result_dir: str, action_set_tag: str
-    ) -> None:
+    def __init__(self, config_file: str, result_dir: str, action_set_tag: str) -> None:
+        print(f"Opening {config_file}")
         with open(config_file, "r") as f:
             _config = json.load(f)
             _config_str = ""

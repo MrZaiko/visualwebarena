@@ -17,7 +17,7 @@ def get_captioning_fn(
             model_name, use_fast=False
         )
         captioning_model = Blip2ForConditionalGeneration.from_pretrained(
-            model_name, torch_dtype=dtype, use_fast=False
+            model_name, torch_dtype=dtype
         )
     else:
         raise NotImplementedError("Only BLIP-2 models are currently supported")
