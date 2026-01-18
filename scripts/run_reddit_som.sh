@@ -22,7 +22,6 @@ do
     bash scripts/reset_reddit.sh
     bash prepare.sh
     uv run run.py \
-    uv run run.py \
      --instruction_path $instruction_path \
      --test_start_idx $start_idx \
      --test_end_idx $end_idx \
