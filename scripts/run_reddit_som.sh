@@ -8,6 +8,7 @@ captioning_model="Salesforce/blip2-flan-t5-xl"
 
 # Define the batch size variable
 batch_size=1
+batch_size=1
 
 # Define the starting and ending indices
 start_idx=100
@@ -20,6 +21,7 @@ do
     # Run the scripts and the Python command with the current indices and defined variables
     bash scripts/reset_reddit.sh
     bash prepare.sh
+    uv run run.py \
     uv run run.py \
      --instruction_path $instruction_path \
      --test_start_idx $start_idx \

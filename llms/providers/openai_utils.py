@@ -302,16 +302,11 @@ def generate_from_openai_chat_completion(
 
     if "LOG_FOLDER" in os.environ:
         log_path = f"{os.environ['LOG_FOLDER']}/openai.json"
-        logger.debug(f"Logging to {log_path}")
-        log = []
-        if os.path.exists(log_path):
-            with open(log_path, "r") as f:
-                log = json.loads(f.read())
-        log.append(messages)
-        with open(log_path, "w") as f:
-            f.write(json.dumps(log))
+        with open(log_path, "rw") as f:
+            log = json.loads(f.read())
+            log.append(messages)
+            f.write(json.dumps(log) + "\n")
 
-    logger.debug("Calling")
     response = client.chat.completions.create(
         model=model,
         messages=messages,
