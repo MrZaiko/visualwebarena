@@ -2,6 +2,7 @@
 
 Modified from https://github.com/web-arena-x/webarena/blob/main/run.py.
 """
+
 import argparse
 import glob
 import json
@@ -69,9 +70,7 @@ def config() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run end-to-end evaluation on the benchmark"
     )
-    parser.add_argument(
-        "--render", action="store_true", help="Render the browser"
-    )
+    parser.add_argument("--render", action="store_true", help="Render the browser")
 
     parser.add_argument(
         "--slow_mo",
@@ -181,15 +180,11 @@ def config() -> argparse.Namespace:
     args = parser.parse_args()
 
     # check the whether the action space is compatible with the observation space
-    if (
-        args.action_set_tag == "id_accessibility_tree"
-        and args.observation_type
-        not in [
-            "accessibility_tree",
-            "accessibility_tree_with_captioner",
-            "image_som",
-        ]
-    ):
+    if args.action_set_tag == "id_accessibility_tree" and args.observation_type not in [
+        "accessibility_tree",
+        "accessibility_tree_with_captioner",
+        "image_som",
+    ]:
         raise ValueError(
             f"Action type {args.action_set_tag} is incompatible with the observation type {args.observation_type}"
         )
@@ -215,10 +210,7 @@ def early_stop(
     last_k_actions = trajectory[1::2][-k:]  # type: ignore[assignment]
     if len(last_k_actions) >= k:
         if all(
-            [
-                action["action_type"] == ActionTypes.NONE
-                for action in last_k_actions
-            ]
+            [action["action_type"] == ActionTypes.NONE for action in last_k_actions]
         ):
             return True, f"Failed to parse actions for {k} times"
 
@@ -234,29 +226,18 @@ def early_stop(
 
     if last_action["action_type"] != ActionTypes.TYPE:
         if len(last_k_actions) >= k:
-            if all(
-                [
-                    is_equivalent(action, last_action)
-                    for action in last_k_actions
-                ]
-            ):
+            if all([is_equivalent(action, last_action) for action in last_k_actions]):
                 return True, f"Same action for {k} times"
 
     else:
         # check the action sequence
-        if (
-            sum([is_equivalent(action, last_action) for action in action_seq])
-            >= k
-        ):
+        if sum([is_equivalent(action, last_action) for action in action_seq]) >= k:
             return True, f"Same typing action for {k} times"
 
     return False, ""
 
 
-def test(
-    args: argparse.Namespace,
-    config_file_list: list[str]
-) -> None:
+def test(args: argparse.Namespace, config_file_list: list[str]) -> None:
     scores = []
     max_steps = args.max_steps
 
@@ -278,11 +259,8 @@ def test(
         caption_image_fn = None
 
     # Load a (possibly different) captioning model for running VQA evals.
-    if DATASET == 'visualwebarena':
-        if (
-            caption_image_fn
-            and args.eval_captioning_model == args.captioning_model
-        ):
+    if DATASET == "visualwebarena":
+        if caption_image_fn and args.eval_captioning_model == args.captioning_model:
             eval_caption_image_fn = caption_image_fn
         else:
             eval_caption_image_fn = image_utils.get_captioning_fn(
@@ -324,9 +302,11 @@ def test(
 
     for config_file in config_file_list:
         try:
+            print("CREATING RENDER")
             render_helper = RenderHelper(
                 config_file, args.result_dir, args.action_set_tag
             )
+            print("DONE")
 
             # Load task.
             with open(config_file) as f:
@@ -341,10 +321,16 @@ def test(
                     cookie_file_name = os.path.basename(_c["storage_state"])
                     comb = get_site_comb_from_filepath(cookie_file_name)
                     temp_dir = tempfile.mkdtemp()
+
+                    print("ARGS")
+                    print(temp_dir)
+                    print(f"COOKIE FILE NAME: {comb}")
+
                     # subprocess to renew the cookie
                     subprocess.run(
                         [
-                            "python",
+                            "uv",
+                            "run",
                             "browser_env/auto_login.py",
                             "--auth_folder",
                             temp_dir,
@@ -353,6 +339,7 @@ def test(
                         ]
                     )
                     _c["storage_state"] = f"{temp_dir}/{cookie_file_name}"
+                    print(f"STORAGE STATE: {_c['storage_state']}")
                     assert os.path.exists(_c["storage_state"])
                     # update the config file
                     config_file = f"{temp_dir}/{os.path.basename(config_file)}"
@@ -366,8 +353,14 @@ def test(
                     for image_path in image_paths:
                         # Load image either from the web or from a local path.
                         if image_path.startswith("http"):
-                            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-                            input_image = Image.open(requests.get(image_path, stream=True, headers = headers).raw)
+                            headers = {
+                                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                            }
+                            input_image = Image.open(
+                                requests.get(
+                                    image_path, stream=True, headers=headers
+                                ).raw
+                            )
                         else:
                             input_image = Image.open(image_path)
 
@@ -441,9 +434,7 @@ def test(
                 config_file, captioning_fn=eval_caption_image_fn
             )
             score = evaluator(
-                trajectory=trajectory,
-                config_file=config_file,
-                page=env.page
+                trajectory=trajectory, config_file=config_file, page=env.page
             )
 
             scores.append(score)
@@ -454,9 +445,7 @@ def test(
                 logger.info(f"[Result] (FAIL) {config_file}")
 
             if args.save_trace_enabled:
-                env.save_trace(
-                    Path(args.result_dir) / "traces" / f"{task_id}.zip"
-                )
+                env.save_trace(Path(args.result_dir) / "traces" / f"{task_id}.zip")
         except openai.OpenAIError as e:
             logger.error(f"[OpenAI Error] {repr(e)}")
         except Exception as e:
@@ -485,9 +474,7 @@ def prepare(args: argparse.Namespace) -> None:
     # prepare result dir
     result_dir = args.result_dir
     if not result_dir:
-        result_dir = (
-            f"cache/results_{time.strftime('%Y%m%d%H%M%S', time.localtime())}"
-        )
+        result_dir = f"cache/results_{time.strftime('%Y%m%d%H%M%S', time.localtime())}"
     if not Path(result_dir).exists():
         Path(result_dir).mkdir(parents=True, exist_ok=True)
         args.result_dir = result_dir
@@ -503,9 +490,7 @@ def prepare(args: argparse.Namespace) -> None:
 
 def get_unfinished(config_files: list[str], result_dir: str) -> list[str]:
     result_files = glob.glob(f"{result_dir}/*.html")
-    task_ids = [
-        os.path.basename(f).split(".")[0].split("_")[1] for f in result_files
-    ]
+    task_ids = [os.path.basename(f).split(".")[0].split("_")[1] for f in result_files]
     unfinished_configs = []
     for config_file in config_files:
         task_id = os.path.basename(config_file).split(".")[0]

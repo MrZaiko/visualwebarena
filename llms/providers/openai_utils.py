@@ -2,6 +2,7 @@
 Adopted from https://github.com/zeno-ml/zeno-build/"""
 
 import asyncio
+import json
 import logging
 import os
 import random
@@ -12,8 +13,12 @@ import aiolimiter
 import openai
 from openai import AsyncOpenAI, OpenAI
 
-client = OpenAI(api_key=os.environ["OPENAI_API_KEY"], base_url=os.environ.get("OPENAI_BASE_URL"))
-aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"], base_url=os.environ.get("OPENAI_BASE_URL"))
+client = OpenAI(
+    api_key=os.environ["OPENAI_API_KEY"], base_url=os.environ.get("OPENAI_BASE_URL")
+)
+aclient = AsyncOpenAI(
+    api_key=os.environ["OPENAI_API_KEY"], base_url=os.environ.get("OPENAI_BASE_URL")
+)
 from tqdm.asyncio import tqdm_asyncio
 
 
@@ -39,7 +44,6 @@ def retry_with_exponential_backoff(  # type: ignore
         # Loop until a successful response or max_retries is hit or an exception is raised
         while True:
             try:
-
                 return func(*args, **kwargs)
 
             # Retry on specified errors
@@ -86,6 +90,13 @@ async def _throttled_openai_completion_acreate(
     top_p: float,
     limiter: aiolimiter.AsyncLimiter,
 ) -> dict[str, Any]:
+    if "LOG_FOLDER" in os.environ:
+        log_path = f"{os.environ['LOG_FOLDER']}/openai.json"
+        with open(log_path, "rw") as f:
+            log = json.loads(f.read())
+            log.append(prompt)
+            f.write(json.dumps(log) + "\n")
+
     async with limiter:
         for _ in range(3):
             try:
@@ -167,6 +178,13 @@ def generate_from_openai_completion(
             "OPENAI_API_KEY environment variable must be set when using OpenAI API."
         )
 
+    if "LOG_FOLDER" in os.environ:
+        log_path = f"{os.environ['LOG_FOLDER']}/openai.json"
+        with open(log_path, "rw") as f:
+            log = json.loads(f.read())
+            log.append(prompt)
+            f.write(json.dumps(log) + "\n")
+
     response = client.completions.create(
         prompt=prompt,
         engine=engine,
@@ -187,6 +205,13 @@ async def _throttled_openai_chat_completion_acreate(
     top_p: float,
     limiter: aiolimiter.AsyncLimiter,
 ) -> dict[str, Any]:
+    if "LOG_FOLDER" in os.environ:
+        log_path = f"{os.environ['LOG_FOLDER']}/openai.json"
+        with open(log_path, "rw") as f:
+            log = json.loads(f.read())
+            log.append(messages)
+            f.write(json.dumps(log) + "\n")
+
     async with limiter:
         for _ in range(3):
             try:

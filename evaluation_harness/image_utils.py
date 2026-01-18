@@ -13,14 +13,14 @@ def get_captioning_fn(
     device, dtype, model_name: str = "Salesforce/blip2-flan-t5-xl"
 ) -> callable:
     if "blip2" in model_name:
-        captioning_processor = Blip2Processor.from_pretrained(model_name)
+        captioning_processor = Blip2Processor.from_pretrained(
+            model_name, use_fast=False
+        )
         captioning_model = Blip2ForConditionalGeneration.from_pretrained(
             model_name, torch_dtype=dtype
         )
     else:
-        raise NotImplementedError(
-            "Only BLIP-2 models are currently supported"
-        )
+        raise NotImplementedError("Only BLIP-2 models are currently supported")
     captioning_model.to(device)
 
     def caption_images(
@@ -30,9 +30,9 @@ def get_captioning_fn(
     ) -> List[str]:
         if prompt is None:
             # Perform VQA
-            inputs = captioning_processor(
-                images=images, return_tensors="pt"
-            ).to(device, dtype)
+            inputs = captioning_processor(images=images, return_tensors="pt").to(
+                device, dtype
+            )
             generated_ids = captioning_model.generate(
                 **inputs, max_new_tokens=max_new_tokens
             )
@@ -41,10 +41,10 @@ def get_captioning_fn(
             )
         else:
             # Regular captioning. Prompt is a list of strings, one for each image
-            assert len(images) == len(
-                prompt
-            ), "Number of images and prompts must match, got {} and {}".format(
-                len(images), len(prompt)
+            assert len(images) == len(prompt), (
+                "Number of images and prompts must match, got {} and {}".format(
+                    len(images), len(prompt)
+                )
             )
             inputs = captioning_processor(
                 images=images, text=prompt, return_tensors="pt"
@@ -63,9 +63,7 @@ def get_captioning_fn(
 
 def get_image_ssim(imageA, imageB):
     # Determine the size to which we should resize
-    new_size = max(imageA.size[0], imageB.size[0]), max(
-        imageA.size[1], imageB.size[1]
-    )
+    new_size = max(imageA.size[0], imageB.size[0]), max(imageA.size[1], imageB.size[1])
 
     # Resize images
     imageA = imageA.resize(new_size, Image.LANCZOS)

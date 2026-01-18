@@ -149,3 +149,4 @@ cache/*
 agents/prompts/jsons/*
 results
 tests/*uv
+logs

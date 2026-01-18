@@ -1,19 +1,13 @@
 #!/bin/bash
 
 ### Define the model, result directory, and instruction path variables
-<<<<<<< HEAD
-model="gpt-4-vision-preview"
-result_dir="reddit_gpt4_som"
-instruction_path="agent/prompts/jsons/p_som_cot_id_actree_3s.json"
-=======
 model="gpt-5.1-2025-11-13"
 result_dir="results"
 instruction_path="agent/prompts/jsons/p_som_cot_id_actree_3s_metatools.json"
->>>>>>> 886d5a4 (Fix meta tools)
 captioning_model="Salesforce/blip2-flan-t5-xl"
 
 # Define the batch size variable
-batch_size=30
+batch_size=1
 
 # Define the starting and ending indices
 start_idx=100
@@ -26,7 +20,7 @@ do
     # Run the scripts and the Python command with the current indices and defined variables
     bash scripts/reset_reddit.sh
     bash prepare.sh
-    python run.py \
+    uv run run.py \
      --instruction_path $instruction_path \
      --test_start_idx $start_idx \
      --test_end_idx $end_idx \
