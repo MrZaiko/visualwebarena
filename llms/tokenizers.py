@@ -9,6 +9,10 @@ class Tokenizer(object):
         if provider == "openai":
             if model_name == "gpt-5.1-2025-11-13":
                 self.tokenizer = tiktoken.get_encoding("o200k_base")
+            elif model_name == "claude-sonnet-4-5-20250929":
+                self.tokenizer = tiktoken.get_encoding("cl100k_base")
+            elif model_name == "openai/gpt-oss-120b":
+                self.tokenizer = tiktoken.get_encoding("o200k_harmony")
             else:
                 self.tokenizer = tiktoken.encoding_for_model(model_name)
             # self.tokenizer = tiktoken.encoding_for_model(model_name)
@@ -20,6 +24,11 @@ class Tokenizer(object):
             self.tokenizer.add_eos_token = False  # type: ignore[attr-defined]
         elif provider == "google":
             self.tokenizer = None  # Not used for input length computation, as Gemini is based on characters
+        elif provider == "anthropic":
+            # Use cl100k_base as a reasonable approximation for Claude tokenization
+            # Claude's actual tokenizer is not publicly available, but cl100k_base
+            # provides a reasonable approximation for token counting purposes
+            self.tokenizer = tiktoken.get_encoding("cl100k_base")
         else:
             raise NotImplementedError
 

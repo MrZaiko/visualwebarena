@@ -43,7 +43,7 @@ from evaluation_harness import evaluator_router, image_utils
 
 DATASET = os.environ["DATASET"]
 
-LOG_FOLDER = "log_files"
+LOG_FOLDER = "/mnt/nfs/home/abuzakuk/vwa/log_files"
 Path(LOG_FOLDER).mkdir(parents=True, exist_ok=True)
 LOG_FILE_NAME = f"{LOG_FOLDER}/log_{time.strftime('%Y%m%d%H%M%S', time.localtime())}_{random.randint(0, 10000)}.log"
 
@@ -491,6 +491,7 @@ def prepare(args: argparse.Namespace) -> None:
 def get_unfinished(config_files: list[str], result_dir: str) -> list[str]:
     result_files = glob.glob(f"{result_dir}/*.html")
     task_ids = [os.path.basename(f).split(".")[0].split("_")[1] for f in result_files]
+    logger.debug(f"Task IDs: {task_ids}")
     unfinished_configs = []
     for config_file in config_files:
         task_id = os.path.basename(config_file).split(".")[0]

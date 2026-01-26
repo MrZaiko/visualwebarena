@@ -408,8 +408,10 @@ def is_equivalent(a: Action, b: Action) -> bool:
             return a["pw_code"] == b["pw_code"]
         case ActionTypes.STOP:
             return a["answer"] == b["answer"]
-        case _:
-            raise ValueError(f"Unknown action type: {a['action_type']}")
+        case ActionTypes.POST_COMMENT:
+            return a["text"] == b["text"]
+        case ActionTypes.SEARCH:
+            return a["text"] == b["text"]
 
 
 _key2id: dict[str, int] = {

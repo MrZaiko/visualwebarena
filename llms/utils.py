@@ -11,6 +11,13 @@ except:
         "Google Cloud not set up, skipping import of vertexai.preview.generative_models.Image and llms.generate_from_gemini_completion"
     )
 
+try:
+    from llms import generate_from_claude_chat_completion
+except:
+    print(
+        "Anthropic not set up, skipping import of llms.generate_from_claude_chat_completion"
+    )
+
 from llms import (
     generate_from_huggingface_completion,
     generate_from_openai_chat_completion,
@@ -72,6 +79,20 @@ def call_llm(
             max_tokens=lm_config.gen_config["max_tokens"],
             top_p=lm_config.gen_config["top_p"],
         )
+    elif lm_config.provider == "anthropic":
+        if lm_config.mode == "chat":
+            assert isinstance(prompt, list)
+            response = generate_from_claude_chat_completion(
+                messages=prompt,
+                model=lm_config.model,
+                temperature=lm_config.gen_config["temperature"],
+                top_p=lm_config.gen_config["top_p"],
+                context_length=lm_config.gen_config["context_length"],
+                max_tokens=lm_config.gen_config["max_tokens"],
+                stop_token=None,
+            )
+        else:
+            raise ValueError(f"Anthropic models do not support mode {lm_config.mode}")
     else:
         raise NotImplementedError(f"Provider {lm_config.provider} not implemented")
 

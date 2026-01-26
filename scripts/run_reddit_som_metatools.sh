@@ -1,24 +1,24 @@
 #!/bin/bash
 
-## Define the model, result directory, and instruction path variables
+### Define the model, result directory, and instruction path variables
 model="gpt-5.1-2025-11-13"
-result_dir="/mnt/nfs/home/abuzakuk/vwa/results/classifieds/gpt-5"
-instruction_path="agent/prompts/jsons/p_som_cot_id_actree_3s.json"
+result_dir="/mnt/nfs/home/abuzakuk/vwa/results/reddit/gpt-5-meta"
+instruction_path="agent/prompts/jsons/p_som_cot_id_actree_3s_metatools.json"
 captioning_model="Salesforce/blip2-flan-t5-xl"
 
 # Define the batch size variable
-batch_size=50
+batch_size=210
 
 # Define the starting and ending indices
 start_idx=0
 end_idx=$((start_idx + batch_size))
-max_idx=234
+max_idx=210
 
 # Loop until the starting index is less than or equal to 466
 while [ $start_idx -le $max_idx ]
 do
-    # Classifieds reset is quick, so we can do it after every example.
-    curl -X POST "$CLASSIFIEDS/index.php?page=reset" -d "token=4b61655535e7ed388f0d40a93600254c"
+    # Run the scripts and the Python command with the current indices and defined variables
+    bash scripts/reset_reddit.sh
     bash prepare.sh
     uv run run.py \
      --instruction_path $instruction_path \
@@ -26,7 +26,8 @@ do
      --test_end_idx $end_idx \
      --model $model \
      --result_dir $result_dir \
-     --test_config_base_dir=config_files/vwa/test_classifieds \
+     --temperature 0.2 \
+     --test_config_base_dir=config_files/vwa/test_reddit \
      --repeating_action_failure_th 5 --viewport_height 2048 --max_obs_length 3840 \
      --captioning_model $captioning_model \
      --eval_captioning_model_device cuda \

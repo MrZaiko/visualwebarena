@@ -1,8 +1,8 @@
 #!/bin/bash
 
 ## Define the model, result directory, and instruction path variables
-model="gpt-5.1-2025-11-13"
-result_dir="/mnt/nfs/home/abuzakuk/vwa/results/classifieds/gpt-5"
+model="claude-sonnet-4-5-20250929"
+result_dir="/mnt/nfs/home/abuzakuk/vwa/results/classifieds/claude"
 instruction_path="agent/prompts/jsons/p_som_cot_id_actree_3s.json"
 captioning_model="Salesforce/blip2-flan-t5-xl"
 
@@ -10,7 +10,7 @@ captioning_model="Salesforce/blip2-flan-t5-xl"
 batch_size=50
 
 # Define the starting and ending indices
-start_idx=0
+start_idx=100
 end_idx=$((start_idx + batch_size))
 max_idx=234
 
@@ -30,6 +30,7 @@ do
      --repeating_action_failure_th 5 --viewport_height 2048 --max_obs_length 3840 \
      --captioning_model $captioning_model \
      --eval_captioning_model_device cuda \
+     --provider anthropic \
      --action_set_tag som  --observation_type image_som
 
     # Increment the start and end indices by the batch size

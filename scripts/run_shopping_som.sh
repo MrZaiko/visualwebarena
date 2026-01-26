@@ -1,8 +1,8 @@
 #!/bin/bash
 ### This script runs the GPT-4V + SoM models on the entire VWA shopping test set.
 
-model="gpt-4-vision-preview"
-result_dir="shopping_gpt4_som"
+model="gpt-5.1-2025-11-13"
+result_dir="/mnt/nfs/home/abuzakuk/vwa/results/shopping/gpt-5"
 instruction_path="agent/prompts/jsons/p_som_cot_id_actree_3s.json"
 
 # Define the batch size variable
@@ -18,14 +18,15 @@ while [ $start_idx -le $max_idx ]
 do
     bash scripts/reset_shopping.sh
     bash prepare.sh
-    python run.py \
+    uv run run.py \
      --instruction_path $instruction_path \
      --test_start_idx $start_idx \
      --test_end_idx $end_idx \
      --model $model \
      --result_dir $result_dir \
-     --test_config_base_dir=config_files/test_shopping \
+     --test_config_base_dir=config_files/vwa/test_shopping \
      --repeating_action_failure_th 5 --viewport_height 2048 --max_obs_length 3840 \
+     --eval_captioning_model_device cuda \
      --action_set_tag som  --observation_type image_som
 
     # Increment the start and end indices by the batch size

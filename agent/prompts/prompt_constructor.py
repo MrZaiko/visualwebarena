@@ -2,6 +2,7 @@ import json
 import re
 from pathlib import Path
 from typing import Any, TypedDict
+
 from PIL import Image
 
 from browser_env import Action, ActionParsingError, Trajectory
@@ -39,13 +40,12 @@ class PromptConstructor(object):
     def get_lm_api_input(
         self, intro: str, examples: list[tuple[str, str]], current: str
     ) -> APIInput:
-
         """Return the require format for an API"""
         message: list[dict[str, str]] | str
         if "openai" in self.lm_config.provider:
             if self.lm_config.mode == "chat":
                 message = [{"role": "system", "content": intro}]
-                for (x, y) in examples:
+                for x, y in examples:
                     message.append(
                         {
                             "role": "system",
@@ -75,6 +75,32 @@ class PromptConstructor(object):
             else:
                 raise ValueError(
                     f"OpenAI models do not support mode {self.lm_config.mode}"
+                )
+        elif "anthropic" in self.lm_config.provider:
+            if self.lm_config.mode == "chat":
+                # Anthropic uses a separate system parameter, so we pass the intro as a system message
+                # The claude_utils.py will extract it and handle the conversion
+                message = [{"role": "system", "content": intro}]
+                for x, y in examples:
+                    message.append(
+                        {
+                            "role": "system",
+                            "name": "example_user",
+                            "content": x,
+                        }
+                    )
+                    message.append(
+                        {
+                            "role": "system",
+                            "name": "example_assistant",
+                            "content": y,
+                        }
+                    )
+                message.append({"role": "user", "content": current})
+                return message
+            else:
+                raise ValueError(
+                    f"Anthropic models do not support mode {self.lm_config.mode}"
                 )
         elif "huggingface" in self.lm_config.provider:
             # https://huggingface.co/blog/llama2#how-to-prompt-llama-2
@@ -174,7 +200,9 @@ class DirectPromptConstructor(PromptConstructor):
         max_obs_length = self.lm_config.gen_config["max_obs_length"]
         if max_obs_length:
             if self.lm_config.provider == "google":
-                print("NOTE: This is a Gemini model, so we use characters instead of tokens for max_obs_length.")
+                print(
+                    "NOTE: This is a Gemini model, so we use characters instead of tokens for max_obs_length."
+                )
                 obs = obs[:max_obs_length]
             else:
                 obs = self.tokenizer.decode(self.tokenizer.encode(obs)[:max_obs_length])  # type: ignore[arg-type]
@@ -203,9 +231,7 @@ class DirectPromptConstructor(PromptConstructor):
         if match:
             return match.group(1).strip()
         else:
-            raise ActionParsingError(
-                f"Cannot parse action from response {response}"
-            )
+            raise ActionParsingError(f"Cannot parse action from response {response}")
 
 
 class CoTPromptConstructor(PromptConstructor):
@@ -236,7 +262,9 @@ class CoTPromptConstructor(PromptConstructor):
         max_obs_length = self.lm_config.gen_config["max_obs_length"]
         if max_obs_length:
             if self.lm_config.provider == "google":
-                print("NOTE: This is a Gemini model, so we use characters instead of tokens for max_obs_length.")
+                print(
+                    "NOTE: This is a Gemini model, so we use characters instead of tokens for max_obs_length."
+                )
                 obs = obs[:max_obs_length]
             else:
                 obs = self.tokenizer.decode(self.tokenizer.encode(obs)[:max_obs_length])  # type: ignore[arg-type]
@@ -299,7 +327,9 @@ class MultimodalCoTPromptConstructor(CoTPromptConstructor):
         max_obs_length = self.lm_config.gen_config["max_obs_length"]
         if max_obs_length:
             if self.lm_config.provider == "google":
-                print("NOTE: This is a Gemini model, so we use characters instead of tokens for max_obs_length.")
+                print(
+                    "NOTE: This is a Gemini model, so we use characters instead of tokens for max_obs_length."
+                )
                 obs = obs[:max_obs_length]
             else:
                 obs = self.tokenizer.decode(self.tokenizer.encode(obs)[:max_obs_length])  # type: ignore[arg-type]
@@ -339,7 +369,7 @@ class MultimodalCoTPromptConstructor(CoTPromptConstructor):
                         "content": [{"type": "text", "text": intro}],
                     }
                 ]
-                for (x, y, z) in examples:
+                for x, y, z in examples:
                     example_img = Image.open(z)
                     message.append(
                         {
@@ -353,9 +383,7 @@ class MultimodalCoTPromptConstructor(CoTPromptConstructor):
                                 },
                                 {
                                     "type": "image_url",
-                                    "image_url": {
-                                        "url": pil_to_b64(example_img)
-                                    },
+                                    "image_url": {"url": pil_to_b64(example_img)},
                                 },
                             ],
                         }
@@ -385,7 +413,7 @@ class MultimodalCoTPromptConstructor(CoTPromptConstructor):
                         [
                             {
                                 "type": "text",
-                                "text": f"({image_i+2}) input image {image_i+1}",
+                                "text": f"({image_i + 2}) input image {image_i + 1}",
                             },
                             {
                                 "type": "image_url",
@@ -401,13 +429,82 @@ class MultimodalCoTPromptConstructor(CoTPromptConstructor):
                 raise ValueError(
                     f"GPT-4V models do not support mode {self.lm_config.mode}"
                 )
+        elif "anthropic" in self.lm_config.provider:
+            if self.lm_config.mode == "chat":
+                # Claude uses a separate system parameter which will be extracted by claude_utils.py
+                message = [
+                    {
+                        "role": "system",
+                        "content": [{"type": "text", "text": intro}],
+                    }
+                ]
+                for x, y, z in examples:
+                    example_img = Image.open(z)
+                    message.append(
+                        {
+                            "role": "system",
+                            "name": "example_user",
+                            "content": [
+                                {"type": "text", "text": x},
+                                {
+                                    "type": "text",
+                                    "text": "IMAGES: (1) current page screenshot",
+                                },
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": pil_to_b64(example_img)},
+                                },
+                            ],
+                        }
+                    )
+                    message.append(
+                        {
+                            "role": "system",
+                            "name": "example_assistant",
+                            "content": [{"type": "text", "text": y}],
+                        }
+                    )
+
+                # Encode images and page_screenshot_img as base64 strings.
+                current_prompt = current
+                content = [
+                    {
+                        "type": "text",
+                        "text": "IMAGES: (1) current page screenshot",
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": pil_to_b64(page_screenshot_img)},
+                    },
+                ]
+                for image_i, image in enumerate(images):
+                    content.extend(
+                        [
+                            {
+                                "type": "text",
+                                "text": f"({image_i + 2}) input image {image_i + 1}",
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": pil_to_b64(image)},
+                            },
+                        ]
+                    )
+                content = [{"type": "text", "text": current_prompt}] + content
+
+                message.append({"role": "user", "content": content})
+                return message
+            else:
+                raise ValueError(
+                    f"Claude models do not support mode {self.lm_config.mode}"
+                )
         elif "google" in self.lm_config.provider:
             if self.lm_config.mode == "completion":
                 message = [
                     intro,
                     "Here are a few examples:",
                 ]
-                for (x, y, z) in examples:
+                for x, y, z in examples:
                     example_img = Image.open(z)
                     message.append(f"Observation\n:{x}\n")
                     message.extend(
@@ -430,7 +527,8 @@ class MultimodalCoTPromptConstructor(CoTPromptConstructor):
                 for image_i, image in enumerate(images):
                     message.extend(
                         [
-                            f"({image_i+2}) input image {image_i+1}",
+                            f"({image_i + 2}) input image {image_i + 1}",
+                            f"({image_i + 2}) input image {image_i + 1}",
                             pil_to_vertex(image),
                         ]
                     )

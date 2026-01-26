@@ -126,6 +126,7 @@ class PromptAgent(Agent):
             "gemini" in lm_config.model
             or "gpt-4" in lm_config.model
             or "gpt-5" in lm_config.model
+            or "claude" in lm_config.model
             or "vision" in lm_config.model
         ) and type(prompt_constructor) is MultimodalCoTPromptConstructor:
             logger.debug("Multimodal")
