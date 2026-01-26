@@ -5,6 +5,7 @@ Inspited by Farama-Foundation/miniwob-plusplus
 
 import ast
 import logging
+import os
 import random
 import re
 import string
@@ -168,6 +169,10 @@ def action2str(action: Action, action_set_tag: str, semantic_element: str = "") 
             case ActionTypes.POST_COMMENT:
                 text = "".join([_id2key[i] for i in action["text"]])
                 action_str = f"post_comment [{text}]"
+            case ActionTypes.POST_LISTING_COMMENT:
+                title = action["element_name"]
+                body = "".join([_id2key[i] for i in action["text"]])
+                action_str = f"post_listing_comment [{title}] [{body}]"
             case ActionTypes.NONE:
                 action_str = "none"
             case _:
@@ -213,6 +218,10 @@ def action2str(action: Action, action_set_tag: str, semantic_element: str = "") 
             case ActionTypes.POST_COMMENT:
                 text = "".join([_id2key[i] for i in action["text"]])
                 action_str = f"post_comment [{text}]"
+            case ActionTypes.POST_LISTING_COMMENT:
+                title = action["element_name"]
+                body = "".join([_id2key[i] for i in action["text"]])
+                action_str = f"post_listing_comment [{title}] [{body}]"
             case ActionTypes.NONE:
                 action_str = "none"
             case _:
@@ -314,6 +323,10 @@ def action2create_function(action: Action) -> str:
         case ActionTypes.POST_COMMENT:
             text = "".join(map(lambda x: _id2key[x], action["text"]))
             return f"create_post_comment_action({repr(text)}, page_url={repr(action['url'])})"
+        case ActionTypes.POST_LISTING_COMMENT:
+            title = action["element_name"]
+            body = "".join(map(lambda x: _id2key[x], action["text"]))
+            return f"create_post_listing_comment_action(title={repr(title)}, body={repr(body)})"
 
     raise ValueError(f"Invalid action type: {action['action_type']}")
 
@@ -355,6 +368,7 @@ class ActionTypes(IntEnum):
     # META Actions
     SEARCH = 20
     POST_COMMENT = 21
+    POST_LISTING_COMMENT = 22
 
     def __str__(self) -> str:
         return f"ACTION_TYPES.{self.name}"
@@ -410,6 +424,8 @@ def is_equivalent(a: Action, b: Action) -> bool:
             return a["answer"] == b["answer"]
         case ActionTypes.POST_COMMENT:
             return a["text"] == b["text"]
+        case ActionTypes.POST_LISTING_COMMENT:
+            return a["element_name"] == b["element_name"] and a["text"] == b["text"]
         case ActionTypes.SEARCH:
             return a["text"] == b["text"]
 
@@ -871,6 +887,26 @@ def create_post_comment_action(text: str, page_url: str = "") -> Action:
             "action_type": ActionTypes.POST_COMMENT,
             "text": _keys2ids(text),
             "url": page_url,  # store the URL to determine which element IDs to use
+        }
+    )
+    return action
+
+
+@beartype
+def create_post_listing_comment_action(title: str, body: str) -> Action:
+    """Return a valid action for posting a comment on a listing.
+
+    Works on pages with URL pattern: /index.php?page=item&id={id}
+    - Writes title to the textarea with id="title"
+    - Writes body to the textarea with id="body"
+    - Clicks the submit button with text "send"
+    """
+    action = create_none_action()
+    action.update(
+        {
+            "action_type": ActionTypes.POST_LISTING_COMMENT,
+            "element_name": title,  # store title in element_name
+            "text": _keys2ids(body),  # store body in text
         }
     )
     return action
@@ -1432,15 +1468,39 @@ def execute_action(
         case ActionTypes.SEARCH:
             # Search writes text to the search input field and submits
             logger.debug("Executing search action")
-            search_input = page.locator("input#site-nav-search")
-            logger.debug("Search input locator found")
-            search_input.click()
-            logger.debug("Search input clicked")
             search = "".join([_id2key[key] for key in action["text"]])
             logger.debug(f"Search text generated: {search}")
-            search_input.fill(search)
-            logger.debug("Search input filled")
-            search_input.press("Enter")
+            current_url = page.url
+            classifieds_url = os.environ.get("CLASSIFIEDS", "")
+            # Check if we're on a classifieds page
+            if classifieds_url and current_url.startswith(classifieds_url):
+                # Use element with id="query" for classifieds
+                search_input = page.locator("#query")
+                search_input.click()
+                search_input.fill(search)
+                # Determine which button to click based on page path
+                from urllib.parse import parse_qs, urlparse
+
+                parsed = urlparse(current_url)
+                path = parsed.path
+                query_params = parse_qs(parsed.query)
+                page_param = query_params.get("page", [""])[0]
+                # On /index.php?page=search&sPattern=... use "Apply" button
+                # On / or /index.php (without page=search) use "Search" button
+                if page_param == "search":
+                    submit_button = page.locator("button:has-text('Apply')")
+                else:
+                    submit_button = page.locator("button:has-text('Search')")
+                submit_button.click()
+            else:
+                # Default behavior for non-classifieds sites
+                search_input = page.locator("input#site-nav-search")
+                logger.debug("Search input locator found")
+                search_input.click()
+                logger.debug("Search input clicked")
+                search_input.fill(search)
+                logger.debug("Search input filled")
+                search_input.press("Enter")
             logger.debug("Search action executed")
         case ActionTypes.POST_COMMENT:
             # Post comment writes text to comment box and clicks post button
@@ -1464,6 +1524,23 @@ def execute_action(
             # Find and click the Post button
             post_button = page.locator("button:has-text('Post')")
             post_button.click()
+        case ActionTypes.POST_LISTING_COMMENT:
+            # Post listing comment on pages with URL pattern /index.php?page=item&id={id}
+            # Write title to textarea#title, body to textarea#body, click button with text "send"
+            logger.debug("Executing post_listing_comment action")
+            title = action["element_name"]
+            body = "".join([_id2key[key] for key in action["text"]])
+            # Fill the title textarea
+            title_box = page.locator("input#title")
+            title_box.click()
+            title_box.fill(title)
+            # Fill the body textarea
+            body_box = page.locator("textarea#body")
+            body_box.click()
+            body_box.fill(body)
+            # Click the submit button with text "send"
+            submit_button = page.locator("button:has-text('send')")
+            submit_button.click()
         case _:
             raise ValueError(f"Unknown action type: {action_type}")
 
@@ -1602,17 +1679,57 @@ async def aexecute_action(
                 element_center[0], element_center[1], action["text"], page
             )
         case ActionTypes.SEARCH:
-            # Search writes text to element 3 (equivalent to type [3] [text])
-            # Note: async version would need observation_processor with async support
-            raise NotImplementedError(
-                "SEARCH action not implemented for async execution"
-            )
+            # Search writes text to the search input field and submits
+            search = "".join([_id2key[key] for key in action["text"]])
+            current_url = page.url
+            classifieds_url = os.environ.get("CLASSIFIEDS", "")
+            # Check if we're on a classifieds page
+            if classifieds_url and current_url.startswith(classifieds_url):
+                # Use element with id="query" for classifieds
+                search_input = page.locator("#query")
+                await search_input.click()
+                await search_input.fill(search)
+                # Determine which button to click based on page path
+                from urllib.parse import parse_qs, urlparse
+
+                parsed = urlparse(current_url)
+                query_params = parse_qs(parsed.query)
+                page_param = query_params.get("page", [""])[0]
+                # On /index.php?page=search&sPattern=... use "Apply" button
+                # On / or /index.php (without page=search) use "Search" button
+                if page_param == "search":
+                    submit_button = page.locator("button:has-text('Apply')")
+                else:
+                    submit_button = page.locator("button:has-text('Search')")
+                await submit_button.click()
+            else:
+                # Default behavior for non-classifieds sites
+                search_input = page.locator("input#site-nav-search")
+                await search_input.click()
+                await search_input.fill(search)
+                await search_input.press("Enter")
         case ActionTypes.POST_COMMENT:
             # Post comment writes text to comment box and clicks post button
             # Note: async version would need observation_processor with async support
             raise NotImplementedError(
                 "POST_COMMENT action not implemented for async execution"
             )
+        case ActionTypes.POST_LISTING_COMMENT:
+            # Post listing comment on pages with URL pattern /index.php?page=item&id={id}
+            # Write title to textarea#title, body to textarea#body, click button with text "send"
+            title = action["element_name"]
+            body = "".join([_id2key[key] for key in action["text"]])
+            # Fill the title textarea
+            title_box = page.locator("textarea#title")
+            await title_box.click()
+            await title_box.fill(title)
+            # Fill the body textarea
+            body_box = page.locator("textarea#body")
+            await body_box.click()
+            await body_box.fill(body)
+            # Click the submit button with text "send"
+            submit_button = page.locator("button:has-text('send')")
+            await submit_button.click()
         case _:
             raise ValueError(f"Unknown action type: {action_type}")
 
@@ -1875,5 +1992,15 @@ def create_id_based_action(action_str: str) -> Action:
                 raise ActionParsingError(f"Invalid post_comment action {action_str}")
             text = match.group(1)
             return create_post_comment_action(text=text)
+        case "post_listing_comment":
+            # post_listing_comment [title] [body] - writes title and body to listing comment form
+            match = re.search(r"post_listing_comment ?\[(.+?)\] ?\[(.+)\]", action_str)
+            if not match:
+                raise ActionParsingError(
+                    f"Invalid post_listing_comment action {action_str}"
+                )
+            title = match.group(1)
+            body = match.group(2)
+            return create_post_listing_comment_action(title=title, body=body)
 
     raise ActionParsingError(f"Invalid action {action_str}")
