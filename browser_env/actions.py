@@ -173,6 +173,11 @@ def action2str(action: Action, action_set_tag: str, semantic_element: str = "") 
                 title = action["element_name"]
                 body = "".join([_id2key[i] for i in action["text"]])
                 action_str = f"post_listing_comment [{title}] [{body}]"
+            case ActionTypes.LEAVE_REVIEW:
+                rating = action["nth"]
+                summary = action["element_name"]
+                review = "".join([_id2key[i] for i in action["text"]])
+                action_str = f"leave_review [{rating}] [{summary}] [{review}]"
             case ActionTypes.NONE:
                 action_str = "none"
             case _:
@@ -222,6 +227,11 @@ def action2str(action: Action, action_set_tag: str, semantic_element: str = "") 
                 title = action["element_name"]
                 body = "".join([_id2key[i] for i in action["text"]])
                 action_str = f"post_listing_comment [{title}] [{body}]"
+            case ActionTypes.LEAVE_REVIEW:
+                rating = action["nth"]
+                summary = action["element_name"]
+                review = "".join([_id2key[i] for i in action["text"]])
+                action_str = f"leave_review [{rating}] [{summary}] [{review}]"
             case ActionTypes.NONE:
                 action_str = "none"
             case _:
@@ -327,6 +337,11 @@ def action2create_function(action: Action) -> str:
             title = action["element_name"]
             body = "".join(map(lambda x: _id2key[x], action["text"]))
             return f"create_post_listing_comment_action(title={repr(title)}, body={repr(body)})"
+        case ActionTypes.LEAVE_REVIEW:
+            rating = action["nth"]
+            summary = action["element_name"]
+            review = "".join(map(lambda x: _id2key[x], action["text"]))
+            return f"create_leave_review_action(rating={rating}, summary={repr(summary)}, review={repr(review)})"
 
     raise ValueError(f"Invalid action type: {action['action_type']}")
 
@@ -369,6 +384,7 @@ class ActionTypes(IntEnum):
     SEARCH = 20
     POST_COMMENT = 21
     POST_LISTING_COMMENT = 22
+    LEAVE_REVIEW = 24
 
     def __str__(self) -> str:
         return f"ACTION_TYPES.{self.name}"
@@ -428,6 +444,12 @@ def is_equivalent(a: Action, b: Action) -> bool:
             return a["element_name"] == b["element_name"] and a["text"] == b["text"]
         case ActionTypes.SEARCH:
             return a["text"] == b["text"]
+        case ActionTypes.LEAVE_REVIEW:
+            return (
+                a["nth"] == b["nth"]
+                and a["element_name"] == b["element_name"]
+                and a["text"] == b["text"]
+            )
 
 
 _key2id: dict[str, int] = {
@@ -907,6 +929,37 @@ def create_post_listing_comment_action(title: str, body: str) -> Action:
             "action_type": ActionTypes.POST_LISTING_COMMENT,
             "element_name": title,  # store title in element_name
             "text": _keys2ids(body),  # store body in text
+        }
+    )
+    return action
+
+
+@beartype
+def create_leave_review_action(rating: int, summary: str, review: str) -> Action:
+    """Return a valid action for leaving a review on a shopping product page.
+
+    Only works on pages with URL pattern: $SHOPPING/[text].html (not subdirectories)
+    - Clicks the tab with id="tab-label-reviews-title"
+    - Scrolls down to the end of the page
+    - Clicks the label with id="Rating_{rating}_label"
+    - Types the summary into the input with id="summary_field"
+    - Types the review into the textarea with id="review_field"
+    - Clicks the button with text "Submit Review"
+
+    Args:
+        rating: Integer from 1 to 5
+        summary: Summary text for the review
+        review: Full review text
+    """
+    if not 1 <= rating <= 5:
+        raise ValueError(f"Rating must be between 1 and 5, got {rating}")
+    action = create_none_action()
+    action.update(
+        {
+            "action_type": ActionTypes.LEAVE_REVIEW,
+            "nth": rating,  # store rating in nth field
+            "element_name": summary,  # store summary in element_name
+            "text": _keys2ids(review),  # store review in text
         }
     )
     return action
@@ -1472,6 +1525,7 @@ def execute_action(
             logger.debug(f"Search text generated: {search}")
             current_url = page.url
             classifieds_url = os.environ.get("CLASSIFIEDS", "")
+            shopping_url = os.environ.get("SHOPPING", "")
             # Check if we're on a classifieds page
             if classifieds_url and current_url.startswith(classifieds_url):
                 # Use element with id="query" for classifieds
@@ -1491,6 +1545,18 @@ def execute_action(
                     submit_button = page.locator("button:has-text('Apply')")
                 else:
                     submit_button = page.locator("button:has-text('Search')")
+                submit_button.click()
+            elif shopping_url and current_url.startswith(shopping_url):
+                # Search on the shopping website
+                # Types text into input#search and clicks button with title="Search"
+                logger.debug("Executing shopping_search action")
+                search_text = "".join([_id2key[key] for key in action["text"]])
+                # Find and fill the search input
+                search_input = page.locator("input#search")
+                search_input.click()
+                search_input.fill(search_text)
+                # Click the search button with title="Search"
+                submit_button = page.locator("button[title='Search']")
                 submit_button.click()
             else:
                 # Default behavior for non-classifieds sites
@@ -1540,6 +1606,59 @@ def execute_action(
             body_box.fill(body)
             # Click the submit button with text "send"
             submit_button = page.locator("button:has-text('send')")
+            submit_button.click()
+        case ActionTypes.LEAVE_REVIEW:
+            # Leave a review on a shopping product page
+            # Only works on pages with URL pattern: $SHOPPING/[text].html
+            logger.debug("Executing leave_review action")
+            current_url = page.url
+            shopping_url = os.environ.get("SHOPPING", "")
+            # Validate URL pattern - should be $SHOPPING/[text].html (not subdirectory)
+            if shopping_url:
+                from urllib.parse import urlparse
+
+                parsed = urlparse(current_url)
+                path = parsed.path
+                # Check if it's a direct .html page (not in a subdirectory)
+                # Valid: /something.html
+                # Invalid: /subdir/something.html
+                path_parts = path.strip("/").split("/")
+                if len(path_parts) != 1 or not path_parts[0].endswith(".html"):
+                    logger.warning(
+                        f"leave_review action may not work on this page: {current_url}. "
+                        f"Expected URL pattern: $SHOPPING/[text].html"
+                    )
+
+            rating = action["nth"]
+            summary = action["element_name"]
+            review_text = "".join([_id2key[key] for key in action["text"]])
+
+            # Click on the reviews tab
+            reviews_tab = page.locator("#tab-label-reviews-title")
+            reviews_tab.click()
+
+            # Scroll down to the end of the page
+            page.evaluate(
+                "(document.scrollingElement || document.body).scrollTop = "
+                "(document.scrollingElement || document.body).scrollHeight;"
+            )
+
+            # Click on the correct rating label
+            rating_label = page.locator(f"#Rating_{rating}_label")
+            rating_label.click()
+
+            # Fill the summary field
+            summary_field = page.locator("#summary_field")
+            summary_field.click()
+            summary_field.fill(summary)
+
+            # Fill the review field
+            review_field = page.locator("#review_field")
+            review_field.click()
+            review_field.fill(review_text)
+
+            # Click the submit button
+            submit_button = page.locator("button:has-text('Submit Review')")
             submit_button.click()
         case _:
             raise ValueError(f"Unknown action type: {action_type}")
@@ -1683,6 +1802,8 @@ async def aexecute_action(
             search = "".join([_id2key[key] for key in action["text"]])
             current_url = page.url
             classifieds_url = os.environ.get("CLASSIFIEDS", "")
+            shopping_url = os.environ.get("SHOPPING", "")
+
             # Check if we're on a classifieds page
             if classifieds_url and current_url.startswith(classifieds_url):
                 # Use element with id="query" for classifieds
@@ -1702,6 +1823,18 @@ async def aexecute_action(
                 else:
                     submit_button = page.locator("button:has-text('Search')")
                 await submit_button.click()
+            elif shopping_url and current_url.startswith(shopping_url):
+                # Search on the shopping website
+                # Types text into input#search and clicks button with title="Search"
+                search_text = "".join([_id2key[key] for key in action["text"]])
+                # Find and fill the search input
+                search_input = page.locator("input#search")
+                await search_input.click()
+                await search_input.fill(search_text)
+                # Click the search button with title="Search"
+                submit_button = page.locator("button[title='Search']")
+                await submit_button.click()
+
             else:
                 # Default behavior for non-classifieds sites
                 search_input = page.locator("input#site-nav-search")
@@ -1729,6 +1862,59 @@ async def aexecute_action(
             await body_box.fill(body)
             # Click the submit button with text "send"
             submit_button = page.locator("button:has-text('send')")
+            await submit_button.click()
+        case ActionTypes.LEAVE_REVIEW:
+            # Leave a review on a shopping product page
+            # Only works on pages with URL pattern: $SHOPPING/[text].html
+            current_url = page.url
+            shopping_url = os.environ.get("SHOPPING", "")
+            # Validate URL pattern - should be $SHOPPING/[text].html (not subdirectory)
+            if shopping_url:
+                from urllib.parse import urlparse
+
+                parsed = urlparse(current_url)
+                path = parsed.path
+                # Check if it's a direct .html page (not in a subdirectory)
+                path_parts = path.strip("/").split("/")
+                if len(path_parts) != 1 or not path_parts[0].endswith(".html"):
+                    import logging
+
+                    logger = logging.getLogger("logger")
+                    logger.warning(
+                        f"leave_review action may not work on this page: {current_url}. "
+                        f"Expected URL pattern: $SHOPPING/[text].html"
+                    )
+
+            rating = action["nth"]
+            summary = action["element_name"]
+            review_text = "".join([_id2key[key] for key in action["text"]])
+
+            # Click on the reviews tab
+            reviews_tab = page.locator("#tab-label-reviews-title")
+            await reviews_tab.click()
+
+            # Scroll down to the end of the page
+            await page.evaluate(
+                "(document.scrollingElement || document.body).scrollTop = "
+                "(document.scrollingElement || document.body).scrollHeight;"
+            )
+
+            # Click on the correct rating label
+            rating_label = page.locator(f"#Rating_{rating}_label")
+            await rating_label.click()
+
+            # Fill the summary field
+            summary_field = page.locator("#summary_field")
+            await summary_field.click()
+            await summary_field.fill(summary)
+
+            # Fill the review field
+            review_field = page.locator("#review_field")
+            await review_field.click()
+            await review_field.fill(review_text)
+
+            # Click the submit button
+            submit_button = page.locator("button:has-text('Submit Review')")
             await submit_button.click()
         case _:
             raise ValueError(f"Unknown action type: {action_type}")
@@ -2002,5 +2188,18 @@ def create_id_based_action(action_str: str) -> Action:
             title = match.group(1)
             body = match.group(2)
             return create_post_listing_comment_action(title=title, body=body)
+        case "leave_review":
+            # leave_review [rating] [summary] [review] - leaves a review on a product page
+            match = re.search(
+                r"leave_review ?\[(\d+)\] ?\[(.+?)\] ?\[(.+)\]", action_str
+            )
+            if not match:
+                raise ActionParsingError(f"Invalid leave_review action {action_str}")
+            rating = int(match.group(1))
+            summary = match.group(2)
+            review = match.group(3)
+            return create_leave_review_action(
+                rating=rating, summary=summary, review=review
+            )
 
     raise ActionParsingError(f"Invalid action {action_str}")

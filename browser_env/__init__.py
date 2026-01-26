@@ -17,6 +17,7 @@ from .actions import (
     create_id_based_action,
     create_key_press_action,
     create_keyboard_type_action,
+    create_leave_review_action,
     create_mouse_click_action,
     create_mouse_hover_action,
     create_new_tab_action,
@@ -71,6 +72,7 @@ __all__ = [
     "create_hover_action",
     "create_select_option_action",
     "create_stop_action",
+    "create_leave_review_action",
     "ActionParsingError",
     "Trajectory",
 ]
