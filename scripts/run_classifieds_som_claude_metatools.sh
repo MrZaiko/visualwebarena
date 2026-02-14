@@ -2,7 +2,7 @@
 
 ## Define the model, result directory, and instruction path variables
 model="claude-sonnet-4-5-20250929"
-result_dir="/mnt/nfs/home/abuzakuk/vwa/results/classifieds/claude"
+result_dir="/mnt/nfs/home/abuzakuk/vwa/results/classifieds/claude-meta"
 instruction_path="agent/prompts/jsons/p_som_cot_id_actree_3s_metatools_classifieds.json"
 captioning_model="Salesforce/blip2-flan-t5-xl"
 
@@ -10,7 +10,7 @@ captioning_model="Salesforce/blip2-flan-t5-xl"
 batch_size=50
 
 # Define the starting and ending indices
-start_idx=0
+start_idx=200
 end_idx=$((start_idx + batch_size))
 max_idx=234
 

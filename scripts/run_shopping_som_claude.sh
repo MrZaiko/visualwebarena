@@ -9,7 +9,7 @@ instruction_path="agent/prompts/jsons/p_som_cot_id_actree_3s.json"
 batch_size=50
 
 # Define the starting and ending indices
-start_idx=300
+start_idx=0
 end_idx=$((start_idx + batch_size))
 max_idx=466
 

@@ -2,7 +2,7 @@
 
 ## Define the model, result directory, and instruction path variables
 model="gpt-5.1-2025-11-13"
-result_dir="/mnt/nfs/home/abuzakuk/vwa/results/classifieds/gpt-5"
+result_dir="/mnt/nfs/home/abuzakuk/vwa/results/classifieds/gpt-5-meta"
 instruction_path="agent/prompts/jsons/p_som_cot_id_actree_3s_metatools_classifieds.json"
 captioning_model="Salesforce/blip2-flan-t5-xl"
 
