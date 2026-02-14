@@ -2,6 +2,8 @@ import argparse
 import logging
 from typing import Any
 
+from llms.token_usage import TokenUsage
+
 try:
     from vertexai.preview.generative_models import Image
 
@@ -31,14 +33,15 @@ APIInput = str | list[Any] | dict[str, Any]
 def call_llm(
     lm_config: lm_config.LMConfig,
     prompt: APIInput,
-) -> str:
+) -> tuple[str, TokenUsage]:
     response: str
+    usage: TokenUsage
     logger = logging.getLogger("logger")
     logger.debug(f"Calling LLM: {lm_config}")
     if lm_config.provider == "openai":
         if lm_config.mode == "chat":
             assert isinstance(prompt, list)
-            response = generate_from_openai_chat_completion(
+            response, usage = generate_from_openai_chat_completion(
                 messages=prompt,
                 model=lm_config.model,
                 temperature=lm_config.gen_config["temperature"],
@@ -49,7 +52,7 @@ def call_llm(
             )
         elif lm_config.mode == "completion":
             assert isinstance(prompt, str)
-            response = generate_from_openai_completion(
+            response, usage = generate_from_openai_completion(
                 prompt=prompt,
                 engine=lm_config.model,
                 temperature=lm_config.gen_config["temperature"],
@@ -69,6 +72,7 @@ def call_llm(
             stop_sequences=lm_config.gen_config["stop_sequences"],
             max_new_tokens=lm_config.gen_config["max_new_tokens"],
         )
+        usage = TokenUsage()
     elif lm_config.provider == "google":
         assert isinstance(prompt, list)
         assert all([isinstance(p, str) or isinstance(p, Image) for p in prompt])
@@ -79,10 +83,11 @@ def call_llm(
             max_tokens=lm_config.gen_config["max_tokens"],
             top_p=lm_config.gen_config["top_p"],
         )
+        usage = TokenUsage()
     elif lm_config.provider == "anthropic":
         if lm_config.mode == "chat":
             assert isinstance(prompt, list)
-            response = generate_from_claude_chat_completion(
+            response, usage = generate_from_claude_chat_completion(
                 messages=prompt,
                 model=lm_config.model,
                 temperature=lm_config.gen_config["temperature"],
@@ -98,4 +103,4 @@ def call_llm(
 
     logger.debug(f"LLM response received: {response}")
 
-    return response
+    return response, usage

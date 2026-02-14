@@ -12,6 +12,8 @@ from typing import Any
 import anthropic
 from PIL import Image
 
+from llms.token_usage import TokenUsage
+
 
 def retry_with_exponential_backoff(
     func,
@@ -146,7 +148,7 @@ def generate_from_claude_chat_completion(
     top_p: float,
     context_length: int,
     stop_token: str | None = None,
-) -> str:
+) -> tuple[str, TokenUsage]:
     """Generate response from Claude chat completion API.
 
     Args:
@@ -160,7 +162,7 @@ def generate_from_claude_chat_completion(
         stop_token: Optional stop token (unused but kept for API compatibility).
 
     Returns:
-        Generated text response.
+        Tuple of (generated text response, token usage).
     """
     logger = logging.getLogger("logger")
     logger.debug("Generating from Claude chat completion")
@@ -268,7 +270,14 @@ def generate_from_claude_chat_completion(
         if block.type == "text":
             answer += block.text
 
-    return answer
+    usage = TokenUsage(
+        input_tokens=response.usage.input_tokens,
+        output_tokens=response.usage.output_tokens,
+        cache_read_tokens=getattr(response.usage, "cache_read_input_tokens", 0) or 0,
+        cache_write_tokens=getattr(response.usage, "cache_creation_input_tokens", 0) or 0,
+    )
+
+    return answer, usage
 
 
 def _convert_content_to_anthropic(content: Any) -> list[dict[str, Any]] | str:
@@ -435,7 +444,7 @@ def fake_generate_from_claude_chat_completion(
     top_p: float,
     context_length: int,
     stop_token: str | None = None,
-) -> str:
+) -> tuple[str, TokenUsage]:
     """Debug only - returns a fake response."""
     if "ANTHROPIC_API_KEY" not in os.environ:
         raise ValueError(
@@ -443,4 +452,4 @@ def fake_generate_from_claude_chat_completion(
         )
 
     answer = "Let's think step-by-step. This page shows a list of links and buttons. There is a search box with the label 'Search query'. I will click on the search box to type the query. In summary, the next action I will perform is ```click [60]```"
-    return answer
+    return answer, TokenUsage()

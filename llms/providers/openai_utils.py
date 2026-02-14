@@ -13,6 +13,8 @@ import aiolimiter
 import openai
 from openai import AsyncOpenAI, OpenAI
 
+from llms.token_usage import TokenUsage
+
 client = OpenAI(
     api_key=os.environ["OPENAI_API_KEY"], base_url=os.environ.get("OPENAI_BASE_URL")
 )
@@ -172,7 +174,7 @@ def generate_from_openai_completion(
     top_p: float,
     context_length: int,
     stop_token: str | None = None,
-) -> str:
+) -> tuple[str, TokenUsage]:
     if "OPENAI_API_KEY" not in os.environ:
         raise ValueError(
             "OPENAI_API_KEY environment variable must be set when using OpenAI API."
@@ -194,7 +196,11 @@ def generate_from_openai_completion(
         stop=[stop_token],
     )
     answer: str = response["choices"][0]["text"]
-    return answer
+    usage = TokenUsage(
+        input_tokens=getattr(response.usage, "prompt_tokens", 0) or 0,
+        output_tokens=getattr(response.usage, "completion_tokens", 0) or 0,
+    )
+    return answer, usage
 
 
 async def _throttled_openai_chat_completion_acreate(
@@ -291,7 +297,7 @@ def generate_from_openai_chat_completion(
     top_p: float,
     context_length: int,
     stop_token: str | None = None,
-) -> str:
+) -> tuple[str, TokenUsage]:
     logger = logging.getLogger("logger")
     logger.debug("Generating from OpenAI chat completion")
 
@@ -318,7 +324,11 @@ def generate_from_openai_chat_completion(
     logger.debug(f"Response: {response}")
 
     answer: str = response.choices[0].message.content
-    return answer
+    usage = TokenUsage(
+        input_tokens=getattr(response.usage, "prompt_tokens", 0) or 0,
+        output_tokens=getattr(response.usage, "completion_tokens", 0) or 0,
+    )
+    return answer, usage
 
 
 @retry_with_exponential_backoff
@@ -331,11 +341,11 @@ def fake_generate_from_openai_chat_completion(
     top_p: float,
     context_length: int,
     stop_token: str | None = None,
-) -> str:
+) -> tuple[str, TokenUsage]:
     if "OPENAI_API_KEY" not in os.environ:
         raise ValueError(
             "OPENAI_API_KEY environment variable must be set when using OpenAI API."
         )
 
     answer = "Let's think step-by-step. This page shows a list of links and buttons. There is a search box with the label 'Search query'. I will click on the search box to type the query. So the action I will perform is \"click [60]\"."
-    return answer
+    return answer, TokenUsage()

@@ -25,6 +25,7 @@ from llms import (
     generate_from_openai_completion,
     lm_config,
 )
+from llms.token_usage import TokenUsage
 from llms.tokenizers import Tokenizer
 
 
@@ -36,7 +37,7 @@ class Agent:
 
     def next_action(
         self, trajectory: Trajectory, intent: str, meta_data: Any
-    ) -> Action:
+    ) -> tuple[Action, TokenUsage]:
         """Predict the next action given the observation"""
         raise NotImplementedError
 
@@ -84,9 +85,9 @@ class TeacherForcingAgent(Agent):
 
     def next_action(
         self, trajectory: Trajectory, intent: str, meta_data: Any
-    ) -> Action:
+    ) -> tuple[Action, TokenUsage]:
         """Predict the next action given the observation"""
-        return self.actions.pop(0)
+        return self.actions.pop(0), TokenUsage()
 
     def reset(
         self,
@@ -146,7 +147,7 @@ class PromptAgent(Agent):
         meta_data: dict[str, Any],
         images: Optional[list[Image.Image]] = None,
         output_response: bool = False,
-    ) -> Action:
+    ) -> tuple[Action, TokenUsage]:
         logger = logging.getLogger("logger")
         logger.debug("In next action")
 
@@ -185,8 +186,10 @@ class PromptAgent(Agent):
             prompt = self.prompt_constructor.construct(trajectory, intent, meta_data)
         lm_config = self.lm_config
         n = 0
+        total_usage = TokenUsage()
         while True:
-            response = call_llm(lm_config, prompt)
+            response, step_usage = call_llm(lm_config, prompt)
+            total_usage += step_usage
             force_prefix = self.prompt_constructor.instruction["meta_data"].get(
                 "force_prefix", ""
             )
@@ -215,7 +218,7 @@ class PromptAgent(Agent):
                     action["raw_prediction"] = response
                     break
 
-        return action
+        return action, total_usage
 
     def reset(self, test_config_file: str) -> None:
         pass
