@@ -58,6 +58,7 @@ temperature=""
 captioning_model="Salesforce/blip2-flan-t5-xl"
 observation_type="image_som"
 action_set_tag="som"
+reset_run_id=false
 
 # --------------- parse args ---------------
 while [[ $# -gt 0 ]]; do
@@ -75,6 +76,7 @@ while [[ $# -gt 0 ]]; do
         --observation_type)  observation_type="$2";  shift 2 ;;
         --action_set_tag)    action_set_tag="$2";    shift 2 ;;
         --no_captioning_model) captioning_model=""; shift ;;
+        --reset_run_id)      reset_run_id=true;     shift ;;
         *)
             echo "Unknown argument: $1" >&2
             exit 1
@@ -162,12 +164,19 @@ while [[ $start_idx -le $max_idx ]]; do
     reset_website
     bash prepare.sh
 
+    # Build per-iteration flags
+    run_flags=()
+    if [[ "$reset_run_id" == true ]]; then
+        run_flags+=(--reset_run_id)
+        reset_run_id=false  # only reset on the first iteration
+    fi
+
     uv run run.py \
         --instruction_path "$instruction_path" \
         --test_start_idx "$start_idx" \
         --test_end_idx "$end_idx" \
         --model "$model" \
-        --experiment_name "VWA-$model-$instruction_path" \
+        --experiment_name "VWA-$model" \
         --wandb_project "AWO" \
         --wandb_entity "sabuzakuk-epfl" \
         --result_dir "$result_dir" \
@@ -178,7 +187,8 @@ while [[ $start_idx -le $max_idx ]]; do
         --eval_captioning_model_device cuda \
         --action_set_tag "$action_set_tag" \
         --observation_type "$observation_type" \
-        "${optional_flags[@]}"
+        "${optional_flags[@]}" \
+        "${run_flags[@]}"
 
     start_idx=$((start_idx + batch_size))
     end_idx=$((start_idx + batch_size))

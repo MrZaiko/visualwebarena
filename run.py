@@ -197,6 +197,7 @@ def config() -> argparse.Namespace:
     parser.add_argument("--wandb_project", type=str, default=None)
     parser.add_argument("--wandb_entity", type=str, default=None)
     parser.add_argument("--run_id", type=str, default=None)
+    parser.add_argument("--reset_run_id", action="store_true", help="Reset the saved wandb run ID and start a new run")
 
     # logging related
     parser.add_argument("--result_dir", type=str, default="")
@@ -323,15 +324,45 @@ def test(args: argparse.Namespace, config_file_list: list[str]) -> None:
         captioning_fn=caption_image_fn,
     )
 
+    def _get_run_id_file() -> Path:
+        """Get the path to the file storing the wandb run ID for this experiment.
+
+        Uses a hash of experiment name, wandb project, and entity so that
+        different experiments can share the same log folder without collisions.
+        """
+        import hashlib
+
+        key = f"{args.experiment_name}|{args.wandb_project}|{args.wandb_entity}"
+        digest = hashlib.sha256(key.encode()).hexdigest()[:12]
+        return Path(LOG_FOLDER) / f"wandb_run_id_{digest}.txt"
+
     def _run_tasks(exp: Experiment | None) -> None:
         if exp:
             exp.notify_start()
-            if args.run_id:
-                exp.init_wandb_run(
-                    run_id=args.run_id, tags=[args.model, "visualwebarena"]
+            run_id = args.run_id
+            run_id_file = _get_run_id_file() if args.experiment_name else None
+
+            # If --reset_run_id, delete the saved file
+            if args.reset_run_id and run_id_file and run_id_file.exists():
+                run_id_file.unlink()
+                logger.info(f"Reset wandb run ID (deleted {run_id_file})")
+
+            # If no run_id provided, try to load from saved file
+            if not run_id and run_id_file and run_id_file.exists():
+                run_id = run_id_file.read_text().strip()
+                logger.info(f"Resuming wandb run {run_id} from {run_id_file}")
+
+            if run_id:
+                wandb_run = exp.init_wandb_run(
+                    run_id=run_id, resume="allow", tags=[args.model, "visualwebarena"]
                 )
             else:
-                exp.init_wandb_run(tags=[args.model, "visualwebarena"])
+                wandb_run = exp.init_wandb_run(tags=[args.model, "visualwebarena"])
+
+            # Save the run ID for future invocations
+            if run_id_file:
+                run_id_file.write_text(wandb_run.id)
+                logger.info(f"Saved wandb run ID {wandb_run.id} to {run_id_file}")
 
             exp.define_metrics(TaskMetrics)
 
