@@ -1,7 +1,7 @@
 from typing import Any
 
 import tiktoken
-from transformers import LlamaTokenizer  # type: ignore
+from transformers import AutoTokenizer, LlamaTokenizer
 
 
 class Tokenizer(object):
@@ -13,6 +13,10 @@ class Tokenizer(object):
                 self.tokenizer = tiktoken.get_encoding("cl100k_base")
             elif model_name == "openai/gpt-oss-120b":
                 self.tokenizer = tiktoken.get_encoding("o200k_harmony")
+            elif model_name == "Qwen/Qwen3-VL-235B-A22B-Instruct":
+                self.tokenizer = tiktoken.get_encoding("cl100k_base")
+            elif model_name.startswith("moonshotai/Kimi"):
+                self.tokenizer = tiktoken.get_encoding("cl100k_base")
             else:
                 self.tokenizer = tiktoken.encoding_for_model(model_name)
             # self.tokenizer = tiktoken.encoding_for_model(model_name)

@@ -20,7 +20,7 @@ import openai
 import requests
 import torch
 from PIL import Image
-from sacsperiment import Experiment, Metrics
+from sacsperiments import Experiment, Metrics
 
 from agent import (
     PromptAgent,
@@ -327,9 +327,11 @@ def test(args: argparse.Namespace, config_file_list: list[str]) -> None:
         if exp:
             exp.notify_start()
             if args.run_id:
-                exp.init_wandb_run(run_id=args.run_id)
+                exp.init_wandb_run(
+                    run_id=args.run_id, tags=[args.model, "visualwebarena"]
+                )
             else:
-                exp.init_wandb_run()
+                exp.init_wandb_run(tags=[args.model, "visualwebarena"])
 
             exp.define_metrics(TaskMetrics)
 

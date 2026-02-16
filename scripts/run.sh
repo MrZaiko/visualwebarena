@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euo pipefail
+# set -euo pipefail
 
 ###############################################################################
 # Unified run script — replaces all scripts/run_* scripts.
@@ -167,8 +167,11 @@ while [[ $start_idx -le $max_idx ]]; do
         --test_start_idx "$start_idx" \
         --test_end_idx "$end_idx" \
         --model "$model" \
+        --experiment_name "VWA-$model-$instruction_path" \
+        --wandb_project "AWO" \
+        --wandb_entity "sabuzakuk-epfl" \
         --result_dir "$result_dir" \
-        --test_config_base_dir="$test_config_base_dir" \
+        --test_config_base_dir "$test_config_base_dir" \
         --repeating_action_failure_th 5 \
         --viewport_height 2048 \
         --max_obs_length 3840 \

@@ -129,7 +129,7 @@ requests==2.32.5
 responses==0.18.0
 rpds-py==0.10.6
 rsa==4.9.1
-sacsperiment @ git+https://gitlab.epfl.ch/abuzakuk/sacsperiment
+sacsperiments @ git+https://gitlab.epfl.ch/abuzakuk/sacsperiment
 safetensors==0.3.3
 scikit-image==0.22.0
 scipy==1.16.3
