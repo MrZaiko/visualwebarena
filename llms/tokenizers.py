@@ -13,7 +13,10 @@ class Tokenizer(object):
                 self.tokenizer = tiktoken.get_encoding("cl100k_base")
             elif model_name == "openai/gpt-oss-120b":
                 self.tokenizer = tiktoken.get_encoding("o200k_harmony")
-            elif model_name == "Qwen/Qwen3-VL-235B-A22B-Instruct":
+            elif (
+                model_name == "Qwen/Qwen3-VL-235B-A22B-Thinking"
+                or model_name == "Qwen/Qwen3-VL-235B-A22B-Instruct"
+            ):
                 self.tokenizer = tiktoken.get_encoding("cl100k_base")
             elif model_name.startswith("moonshotai/Kimi"):
                 self.tokenizer = tiktoken.get_encoding("cl100k_base")

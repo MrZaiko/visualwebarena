@@ -59,6 +59,7 @@ captioning_model="Salesforce/blip2-flan-t5-xl"
 observation_type="image_som"
 action_set_tag="som"
 reset_run_id=false
+run_id=""
 
 # --------------- parse args ---------------
 while [[ $# -gt 0 ]]; do
@@ -77,6 +78,7 @@ while [[ $# -gt 0 ]]; do
         --action_set_tag)    action_set_tag="$2";    shift 2 ;;
         --no_captioning_model) captioning_model=""; shift ;;
         --reset_run_id)      reset_run_id=true;     shift ;;
+        --run_id)            run_id="$2";            shift 2 ;;
         *)
             echo "Unknown argument: $1" >&2
             exit 1
@@ -115,7 +117,6 @@ case "$website" in
         test_config_base_dir="config_files/vwa/test_reddit"
         [[ -z "$max_idx" ]] && max_idx=210
         [[ "$batch_size" -eq 50 ]] && batch_size=30
-        [[ -z "$temperature" ]] && temperature=0.2
         ;;
     classifieds)
         test_config_base_dir="config_files/vwa/test_classifieds"
@@ -138,6 +139,7 @@ optional_flags=()
 [[ -n "$provider" ]]          && optional_flags+=(--provider "$provider")
 [[ -n "$temperature" ]]       && optional_flags+=(--temperature "$temperature")
 [[ -n "$captioning_model" ]]  && optional_flags+=(--captioning_model "$captioning_model")
+[[ -n "$run_id" ]]           && optional_flags+=(--run_id "$run_id")
 
 # --------------- reset function ---------------
 reset_website() {
@@ -176,6 +178,7 @@ while [[ $start_idx -le $max_idx ]]; do
         --test_start_idx "$start_idx" \
         --test_end_idx "$end_idx" \
         --model "$model" \
+        --temperature 1 \
         --experiment_name "VWA-$model" \
         --wandb_project "AWO" \
         --wandb_entity "sabuzakuk-epfl" \

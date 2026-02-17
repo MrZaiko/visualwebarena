@@ -56,6 +56,7 @@ class TaskMetrics(Metrics):
     cache_write_tokens: int = 0
     num_steps: int = 0
     latency_seconds: float = 0.0
+    task_id: int = 0
 
 
 DATASET = os.environ["DATASET"]
@@ -197,7 +198,11 @@ def config() -> argparse.Namespace:
     parser.add_argument("--wandb_project", type=str, default=None)
     parser.add_argument("--wandb_entity", type=str, default=None)
     parser.add_argument("--run_id", type=str, default=None)
-    parser.add_argument("--reset_run_id", action="store_true", help="Reset the saved wandb run ID and start a new run")
+    parser.add_argument(
+        "--reset_run_id",
+        action="store_true",
+        help="Reset the saved wandb run ID and start a new run",
+    )
 
     # logging related
     parser.add_argument("--result_dir", type=str, default="")
@@ -366,12 +371,13 @@ def test(args: argparse.Namespace, config_file_list: list[str]) -> None:
 
             exp.define_metrics(TaskMetrics)
 
-        for task_index, config_file in enumerate(config_file_list):
+        for _, config_file in enumerate(config_file_list):
             task_usage = TokenUsage()
             task_start_time = time.time()
             score = 0.0
             task_site = ""
             trajectory: Trajectory = []
+            task_id = 0
 
             try:
                 print("CREATING RENDER")
@@ -546,13 +552,15 @@ def test(args: argparse.Namespace, config_file_list: list[str]) -> None:
                     cache_write_tokens=task_usage.cache_write_tokens,
                     num_steps=int(num_steps),
                     latency_seconds=latency_seconds,
+                    task_id=task_id,
                 )
-                exp.log_metrics(metrics, step=task_index)
+                exp.log_metrics(metrics)
 
             render_helper.close()
 
         if exp:
             exp.notify_complete()
+            exp.finish_wandb_run()
 
     if args.experiment_name:
         with Experiment(
