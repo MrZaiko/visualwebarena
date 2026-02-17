@@ -57,6 +57,52 @@ class TaskMetrics(Metrics):
     num_steps: int = 0
     latency_seconds: float = 0.0
     task_id: int = 0
+    # Cumulative metrics across all runs
+    cumulative_tasks: int = 0
+    cumulative_successes: int = 0
+    cumulative_success_rate: float = 0.0
+    cumulative_total_tokens: int = 0
+    cumulative_input_tokens: int = 0
+    cumulative_output_tokens: int = 0
+    cumulative_cache_read_tokens: int = 0
+    cumulative_cache_write_tokens: int = 0
+    cumulative_num_steps: int = 0
+    cumulative_latency_seconds: float = 0.0
+
+
+CUMULATIVE_FIELDS = [
+    "cumulative_tasks", "cumulative_successes", "cumulative_success_rate",
+    "cumulative_total_tokens", "cumulative_input_tokens", "cumulative_output_tokens",
+    "cumulative_cache_read_tokens", "cumulative_cache_write_tokens",
+    "cumulative_num_steps", "cumulative_latency_seconds",
+]
+
+EMPTY_CUMULATIVE = {f: 0.0 if "rate" in f or "latency" in f else 0 for f in CUMULATIVE_FIELDS}
+
+
+def _load_cumulative_from_wandb(run_id: str, project: str, entity: str | None = None) -> dict:
+    """Load cumulative metrics from the last logged step in the wandb run."""
+    import wandb
+
+    api = wandb.Api()
+    path = f"{entity}/{project}/{run_id}" if entity else f"{project}/{run_id}"
+    try:
+        run = api.run(path)
+    except Exception as e:
+        logger.warning(f"Could not fetch wandb run {path}: {e}")
+        return {}
+
+    # Get only the last row with the cumulative fields
+    history = run.history(keys=CUMULATIVE_FIELDS)
+    if history.empty:
+        return {}
+
+    last_row = history.iloc[-1]
+    # Check that cumulative data is actually present
+    if last_row.get("cumulative_tasks", 0) == 0:
+        return {}
+
+    return {f: last_row.get(f, EMPTY_CUMULATIVE[f]) for f in CUMULATIVE_FIELDS}
 
 
 DATASET = os.environ["DATASET"]
@@ -343,7 +389,6 @@ def test(args: argparse.Namespace, config_file_list: list[str]) -> None:
 
     def _run_tasks(exp: Experiment | None) -> None:
         if exp:
-            exp.notify_start()
             run_id = args.run_id
             run_id_file = _get_run_id_file() if args.experiment_name else None
 
@@ -370,6 +415,22 @@ def test(args: argparse.Namespace, config_file_list: list[str]) -> None:
                 logger.info(f"Saved wandb run ID {wandb_run.id} to {run_id_file}")
 
             exp.define_metrics(TaskMetrics)
+
+        # Load cumulative metrics from the last wandb step
+        cumulative = dict(EMPTY_CUMULATIVE)
+        if exp:
+            actual_run_id = wandb_run.id if wandb_run else None
+            if actual_run_id and args.wandb_project:
+                loaded = _load_cumulative_from_wandb(
+                    actual_run_id, args.wandb_project, args.wandb_entity
+                )
+                if loaded:
+                    cumulative = loaded
+                    logger.info(
+                        f"Loaded cumulative metrics from wandb: "
+                        f"{cumulative['cumulative_tasks']} tasks, "
+                        f"{cumulative['cumulative_successes']} successes"
+                    )
 
         for _, config_file in enumerate(config_file_list):
             task_usage = TokenUsage()
@@ -542,6 +603,21 @@ def test(args: argparse.Namespace, config_file_list: list[str]) -> None:
             if exp:
                 num_steps = (len(trajectory) - 1) / 2 if trajectory else 0
                 latency_seconds = time.time() - task_start_time
+
+                # Update cumulative metrics
+                cumulative["cumulative_tasks"] += 1
+                cumulative["cumulative_successes"] += int(score == 1.0)
+                cumulative["cumulative_success_rate"] = (
+                    cumulative["cumulative_successes"] / cumulative["cumulative_tasks"]
+                )
+                cumulative["cumulative_total_tokens"] += task_usage.total_tokens
+                cumulative["cumulative_input_tokens"] += task_usage.input_tokens
+                cumulative["cumulative_output_tokens"] += task_usage.output_tokens
+                cumulative["cumulative_cache_read_tokens"] += task_usage.cache_read_tokens
+                cumulative["cumulative_cache_write_tokens"] += task_usage.cache_write_tokens
+                cumulative["cumulative_num_steps"] += int(num_steps)
+                cumulative["cumulative_latency_seconds"] += latency_seconds
+
                 metrics = TaskMetrics(
                     success=score == 1.0,
                     site=task_site,
@@ -553,13 +629,19 @@ def test(args: argparse.Namespace, config_file_list: list[str]) -> None:
                     num_steps=int(num_steps),
                     latency_seconds=latency_seconds,
                     task_id=task_id,
+                    **cumulative,
                 )
                 exp.log_metrics(metrics)
+
+                logger.info(
+                    f"[Cumulative] tasks={cumulative['cumulative_tasks']}, "
+                    f"successes={cumulative['cumulative_successes']}, "
+                    f"rate={cumulative['cumulative_success_rate']:.3f}"
+                )
 
             render_helper.close()
 
         if exp:
-            exp.notify_complete()
             exp.finish_wandb_run()
 
     if args.experiment_name:
